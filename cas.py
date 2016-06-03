@@ -1,8 +1,16 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+# ✓
+#LD_LIBRARY_PATH="/srv/ceph-devel/src/src/.libs:/srv/ceph-devel/src/src/build/lib.linux-x86_64-2.7" ipython
+
 
 import base64
 import hashlib
 import json
+import logging
 import rados
+
+logging.basicConfig(level=logging.DEBUG)
 
 def fingerprint(data):
     h = hashlib.sha256()
@@ -10,8 +18,15 @@ def fingerprint(data):
 
     return "SHA-256", h.hexdigest()
 
+
+class CASError(Exception):
+    pass
+
 class CAS():
     __version__ = "vaceph-cas-0.1"
+
+    log = logging.getLogger("CAS")
+
 
     def __init__(self, ioctx):
 
@@ -26,7 +41,10 @@ class CAS():
         If exists, increase refcount.
         If not exists, create with refcount 1
         """
+        self.log.debug("PUT: %d bytes", len(data))
+
         algo, fp = fingerprint(data)
+        self.log.debug("Fingerprint (%s): %s", algo, fp)
 
         meta = {
             "fp_algo" : algo,
@@ -41,22 +59,25 @@ class CAS():
 
         jargs = json.dumps(args)
 
-        print "PUT:", jargs
+        self.log.debug("PUT: %r", args["meta"])
 
         ret, _ = self.ioctx.execute(fp, "cas", "put", jargs)
 
         if ret == 0:
             return fp
+        else:
+            raise CASError("PUT failed")
 
-    def get(self, fp):
+    def get(self, fp, off=0, size=8192):
         """
         Get object by fingerprint
         Throws ObjectNotFound if no object by that fingerprint exists
         """
-        ret, out = self.ioctx.execute(fp, "cas", "get", "")
+        self.log.debug("GET: %s", fp)
 
-        if ret == 0:
-            return out
+        return self.ioctx.read(fp, size, off)
+
+    #        ret, out = self.ioctx.execute(fp, "cas", "get", "")
 
     def up(self, fp):
         """

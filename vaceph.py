@@ -1,5 +1,6 @@
 #!/usr/bin/env python
-
+# -*- coding: utf-8 -*-
+# ✓
 #LD_LIBRARY_PATH="/srv/ceph-devel/src/src/.libs:/srv/ceph-devel/src/src/build/lib.linux-x86_64-2.7" ipython
 
 
@@ -48,9 +49,7 @@ def setup_ceph_local_dev():
     cluster = rados.Rados(name="client.admin", clustername="ceph", conffile="/srv/ceph-devel/src/src/ceph.conf")
     cluster.connect()
 
-    ioctx = cluster.open_ioctx("rbd")
-
-    return cluster, ioctx
+    return cluster
 
 from stat import *
 
