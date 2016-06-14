@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 # ✓
-#LD_LIBRARY_PATH="/srv/ceph-devel/src/src/.libs:/srv/ceph-devel/src/src/build/lib.linux-x86_64-2.7" ipython
+# LD_LIBRARY_PATH="/srv/ceph-devel/src/src/.libs:/srv/ceph-devel/src/src/build/lib.linux-x86_64-2.7" ipython
 
 
 import base64
@@ -11,6 +11,7 @@ import logging
 import rados
 
 logging.basicConfig(level=logging.DEBUG)
+
 
 def fingerprint(data):
     h = hashlib.sha256()
@@ -22,18 +23,16 @@ def fingerprint(data):
 class CASError(Exception):
     pass
 
+
 class CAS():
     __version__ = "vaceph-cas-0.1"
 
     log = logging.getLogger("CAS")
 
-
     def __init__(self, ioctx):
 
         self.ioctx = ioctx
-
         self.ioctx.set_namespace("CAS")
-
 
     def put(self, data):
         """
@@ -47,14 +46,14 @@ class CAS():
         self.log.debug("Fingerprint (%s): %s", algo, fp)
 
         meta = {
-            "fp_algo" : algo,
-            "lib" : self.__version__,
-            "compression" : "no",
+            "fp_algo": algo,
+            "lib": self.__version__,
+            "compression": "no",
         }
 
         args = {
-            "data" : base64.b64encode(data),
-            "meta" : [{"key" : k, "val" : v} for k, v in meta.iteritems()],
+            "data": base64.b64encode(data),
+            "meta": [{"key": k, "val": v} for k, v in meta.iteritems()],
         }
 
         jargs = json.dumps(args)
@@ -91,7 +90,6 @@ class CAS():
                 return True
         except rados.Error:
             return False
-
 
     def down(self, fp):
         """

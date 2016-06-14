@@ -2,20 +2,20 @@
 # -*- coding: utf-8 -*-
 # ✓
 
-#LD_LIBRARY_PATH="/srv/ceph-devel/src/src/.libs:/srv/ceph-devel/src/src/build/lib.linux-x86_64-2.7" ipython
+# LD_LIBRARY_PATH="/srv/ceph-devel/src/src/.libs:/srv/ceph-devel/src/src/build/lib.linux-x86_64-2.7" ipython
 
 from StringIO import StringIO
 import sys
 import os
 import logging
 import uuid
-import binascii
 
 import vaceph
 from cas import CAS
 from chunk import Chunker
 
 logging.basicConfig(level=logging.DEBUG)
+
 
 def main():
     cluster = vaceph.setup_ceph_local_dev()
@@ -27,7 +27,6 @@ def main():
 
     cas = CAS(ioctx_cas)
     chunker = Chunker(cas, ioctx_index)
-
 
     foo = cas.put("foo")
     print "put(foo) ->", foo

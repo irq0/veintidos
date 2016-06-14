@@ -8,16 +8,20 @@ import logging
 
 logging.basicConfig(level=logging.DEBUG)
 
+
 def pack_entry(extent):
     return struct.pack("<QQ64s", *extent)
 
+
 def unpack_entry(data):
     return struct.unpack("<QQ64s", data)
+
 
 class RecipeMaker(object):
     __version__ = "vaceph-recipe-maker-0.1"
 
     log = logging.getLogger("Chunker")
+
     def __init__(self, cas):
 
         self.cas = cas

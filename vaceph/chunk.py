@@ -9,13 +9,16 @@ import recipe
 
 logging.basicConfig(level=logging.DEBUG)
 
+
 def make_index_version():
     """ Make version number for index enties """
     return int(time.time()*1000)
 
+
 def chunk_iter(file_obj, chunk_size=4 * 1024**2):
     """ Iterate fixed sized chunks in a file """
     return iter(lambda: file_obj.read(chunk_size), '')
+
 
 class Chunker(object):
     """
@@ -43,7 +46,7 @@ class Chunker(object):
         """
 
         self.cas = cas_obj
-        self.recipe = recipe.RecipeMaker(cas_obj)
+        self.recipe = recipe.SimpleRecipeMaker
         self.index_io_ctx = index_io_ctx
         self.index_io_ctx.set_namespace("INDEX")
 
@@ -59,19 +62,21 @@ class Chunker(object):
         # TODO make modular
         # TODO cas put in parallel
         fps = ((i*self.chunk_size, self.chunk_size, fp)
-               for i, fp in
+                for i, fp in
                enumerate(self.cas.put(chunk)
                          for chunk in chunk_iter(file, self.chunk_size)))
 
         self.log.debug("Chunking and CAS storage: Fin")
 
-        recipe_obj_name = self.recipe.put(fps)
+        recipe_obj_name = self.cas.put(self.recipe.pack(fps))
         index_version_key = str(make_index_version())
 
-        self.log.debug("Saving recipe: [%s] %s -> %s", name, index_version_key, recipe_obj_name)
+        self.log.debug("Saving recipe: [%s] %s -> %s",
+                       name, index_version_key, recipe_obj_name)
 
         w_op = self.index_io_ctx.create_write_op()
-        self.index_io_ctx.set_omap(w_op, (index_version_key,), (recipe_obj_name,))
+        self.index_io_ctx.set_omap(w_op, (index_version_key,),
+                                   (recipe_obj_name,))
         self.index_io_ctx.operate_write_op(w_op, name)
         self.index_io_ctx.release_write_op(w_op)
 
@@ -84,7 +89,6 @@ class Chunker(object):
         self.index_io_ctx.release_read_op(r_op)
 
         return vals
-
 
     def versions(self, name):
         """
@@ -99,7 +103,6 @@ class Chunker(object):
         """
         return max(self.versions(name))
 
-
     def read_full(self, name, file, version="HEAD"):
         """
         Write all data belonging to name to file
@@ -110,7 +113,7 @@ class Chunker(object):
         else:
             recipe_obj = dict(self._versions_and_recipes(name))[version]
 
-        fps = self.recipe.get(recipe_obj)
+        fps = self.recipe.unpack(self.cas.get(recipe_obj))
         self.log.debug("Retrieved recipe: %d extents", len(fps))
 
         # chunks = ((off, size, self.cas.get(fp))
@@ -130,7 +133,8 @@ class Chunker(object):
             bytes_written += size
             bytes_retrieved += len(chunk)
 
-        self.log.debug("Wrote %d bytes / Retrieved %d bytes", bytes_written, bytes_retrieved)
+        self.log.debug("Wrote %d bytes / Retrieved %d bytes",
+                       bytes_written, bytes_retrieved)
         file.flush()
 
         return bytes_written
