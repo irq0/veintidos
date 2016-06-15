@@ -40,10 +40,8 @@ class CAS():
         If exists, increase refcount.
         If not exists, create with refcount 1
         """
-        self.log.debug("PUT: %d bytes", len(data))
-
         algo, fp = fingerprint(data)
-        self.log.debug("Fingerprint (%s): %s", algo, fp)
+        self.log.debug("PUT [%s:%r]: %d bytes", algo, fp, len(data))
 
         meta = {
             "fp_algo": algo,
@@ -58,7 +56,7 @@ class CAS():
 
         jargs = json.dumps(args)
 
-        self.log.debug("PUT: %r", args["meta"])
+        self.log.debug("PUT [%s:%r]: %r", algo, fp, args["meta"])
 
         ret, _ = self.ioctx.execute(fp, "cas", "put", jargs)
 
@@ -72,7 +70,7 @@ class CAS():
         Get object by fingerprint
         Throws ObjectNotFound if no object by that fingerprint exists
         """
-        self.log.debug("GET: %s", fp)
+        self.log.debug("GET [%r]: %s:%s", fp, off, size)
 
         return self.ioctx.read(fp, size, off)
 
@@ -83,6 +81,7 @@ class CAS():
         Increment refcount for fingerprint.
         Pin object if refcount hits its maximum
         """
+        self.log.debug("UP [%r]", fp)
         try:
             ret, _ = self.ioctx.execute(fp, "cas", "up", "")
 
@@ -96,6 +95,7 @@ class CAS():
         Decrement refcount for fingerprint.
         Destroy object if fingerprint reaches 0 and if it is not pinned
         """
+        self.log.debug("DOWN [%r]", fp)
         try:
             ret, _ = self.ioctx.execute(fp, "cas", "down", "")
 

@@ -71,14 +71,17 @@ class Chunker(object):
         """
         ( (off, size, data) ) ↦ ( (off, size, fingerprint) )
         """
-        self.log.debug("Writing chunks to CAS pool")
+        self.log.debug("Writing chunks to CAS pool: Start")
         pool = multiprocessing.Pool(8)
 
         def cas_put_wrapper(args):
             off, size, chunk = args
             return (off, size, self.cas.put(chunk))
 
-        return pool.map(cas_put_wrapper, chunks, chunksize=16)
+        result = pool.map(cas_put_wrapper, chunks, chunksize=16)
+        self.log.debug("Writing chunks to CAS pool: Done")
+
+        return result
 
     def write_full(self, name, file_):
         """
@@ -86,7 +89,7 @@ class Chunker(object):
         and return version number
         """
 
-        self.log.debug("Writing file: %r", file_)
+        self.log.debug("Writing data [%r]: %r", name, file_)
 
         chunks = self.chunker(file_)
         fps = self._write_chunks(chunks)
@@ -94,7 +97,7 @@ class Chunker(object):
         recipe_obj_name = self.cas.put(self.recipe.pack(fps))
         index_version_key = str(make_index_version())
 
-        self.log.debug("Saving recipe: [%s] %s -> %s",
+        self.log.debug("Saving recipe [%s]: %s -> %s",
                        name, index_version_key, recipe_obj_name)
 
         w_op = self.index_io_ctx.create_write_op()
