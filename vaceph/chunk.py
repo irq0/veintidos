@@ -4,6 +4,9 @@
 
 import time
 import logging
+import multiprocessing.dummy as multiprocessing
+
+from functools import partial
 
 import recipe
 
@@ -15,10 +18,23 @@ def make_index_version():
     return int(time.time()*1000)
 
 
+#
+# Chunk generators
+#
+
 def chunk_iter(file_obj, chunk_size=4 * 1024**2):
     """ Iterate fixed sized chunks in a file """
     return iter(lambda: file_obj.read(chunk_size), '')
 
+
+def static_chunker(file_, chunk_size):
+    """
+    Return generator with static chunked extents + data
+    for file_
+    """
+    return ((i*chunk_size, chunk_size, chunk)
+            for i, chunk in
+            enumerate(chunk_iter(file_, chunk_size)))
 
 class Chunker(object):
     """
@@ -36,6 +52,7 @@ class Chunker(object):
     log = logging.getLogger("Chunker")
     chunk_size = 4 * 1024**2
     cas_worker = None
+    chunker = partial(static_chunker, chunk_size=chunk_size)
 
     def __init__(self, cas_obj, index_io_ctx):
         """
@@ -50,23 +67,29 @@ class Chunker(object):
         self.index_io_ctx = index_io_ctx
         self.index_io_ctx.set_namespace("INDEX")
 
-    def write_full(self, name, file):
+    def _write_chunks(self, chunks):
         """
-        Write all data in file to a CAS pool
+        ( (off, size, data) ) ↦ ( (off, size, fingerprint) )
+        """
+        self.log.debug("Writing chunks to CAS pool")
+        pool = multiprocessing.Pool(8)
+
+        def cas_put_wrapper(args):
+            off, size, chunk = args
+            return (off, size, self.cas.put(chunk))
+
+        return pool.map(cas_put_wrapper, chunks, chunksize=16)
+
+    def write_full(self, name, file_):
+        """
+        Write all data in file_ to a CAS pool
         and return version number
         """
 
-        self.log.debug("Chunking and CAS storage: Start")
+        self.log.debug("Writing file: %r", file_)
 
-        # static chunking
-        # TODO make modular
-        # TODO cas put in parallel
-        fps = ((i*self.chunk_size, self.chunk_size, fp)
-                for i, fp in
-               enumerate(self.cas.put(chunk)
-                         for chunk in chunk_iter(file, self.chunk_size)))
-
-        self.log.debug("Chunking and CAS storage: Fin")
+        chunks = self.chunker(file_)
+        fps = self._write_chunks(chunks)
 
         recipe_obj_name = self.cas.put(self.recipe.pack(fps))
         index_version_key = str(make_index_version())
@@ -103,7 +126,7 @@ class Chunker(object):
         """
         return max(self.versions(name))
 
-    def read_full(self, name, file, version="HEAD"):
+    def read_full(self, name, file_, version="HEAD"):
         """
         Write all data belonging to name to file
         """
@@ -127,14 +150,14 @@ class Chunker(object):
 
             self.log.debug("Writing extent: %d:%d (%d)", off, size, len(chunk))
 
-            file.seek(off)
-            file.write(chunk[:size])
+            file_.seek(off)
+            file_.write(chunk[:size])
 
             bytes_written += size
             bytes_retrieved += len(chunk)
 
         self.log.debug("Wrote %d bytes / Retrieved %d bytes",
                        bytes_written, bytes_retrieved)
-        file.flush()
+        file_.flush()
 
         return bytes_written
