@@ -127,17 +127,28 @@ class Chunker(object):
         """
         Return last version
         """
-        return max(self.versions(name))
+        versions = self.versions(name)
+        if versions:
+            return max(self.versions(name))
+
+    def _resolve_recipe_obj_from_version(self, name, version):
+        vs_and_rs = self._versions_and_recipes(name)
+
+        if not vs_and_rs:
+            return None
+
+        if version == "HEAD":
+            return max(self._versions_and_recipes(name))
+        else:
+            return (version, dict(self._versions_and_recipes(name))[version])
 
     def read_full(self, name, file_, version="HEAD"):
         """
         Write all data belonging to name to file
         """
+        version, recipe_obj = self._resolve_recipe_obj_from_version(name, version)
 
-        if version == "HEAD":
-            recipe_obj = max(self._versions_and_recipes(name))[1]
-        else:
-            recipe_obj = dict(self._versions_and_recipes(name))[version]
+        self.log.debug("Reading version %r of object %r", version, name)
 
         fps = self.recipe.unpack(self.cas.get(recipe_obj))
         self.log.debug("Retrieved recipe: %d extents", len(fps))
@@ -164,3 +175,38 @@ class Chunker(object):
         file_.flush()
 
         return bytes_written
+
+    def remove_version(self, name, version="HEAD"):
+        """
+        Remove version of name
+
+        Decreases refcount of all objects in recipe
+        """
+        version, recipe_obj = self._resolve_recipe_obj_from_version(name, version)
+
+        self.log.debug("Removing version %r of object %r", version, name)
+        fps = self.recipe.unpack(self.cas.get(recipe_obj))
+
+        for _, _, fp in fps:
+            self.cas.down(fp)
+
+        w_op = self.index_io_ctx.create_write_op()
+        self.index_io_ctx.remove_omap_keys(w_op, (version,))
+        self.index_io_ctx.operate_write_op(w_op, name)
+        self.index_io_ctx.release_write_op(w_op)
+
+        self.cas.down(recipe_obj)
+
+    def remove_all_versions(self, name):
+        """
+        Remove all versions of an object and
+        the index object itself
+        Decreases refcount of all objects in recipe
+        """
+        todo = list(self._versions_and_recipes(name))
+        self.log.debug("Removing ALL of object [%r]: %r", name, todo)
+
+        for version, _ in todo:
+            self.remove_version(name, version)
+
+        self.index_io_ctx.remove_object(name)
