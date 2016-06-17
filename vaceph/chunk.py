@@ -9,7 +9,7 @@ import multiprocessing.dummy as multiprocessing
 from functools import partial
 
 import recipe
-from recipe import get_extents_in_range
+
 
 def make_index_version():
     """ Make version number for index enties """
@@ -34,6 +34,7 @@ def static_chunker(file_, chunk_size):
     return ((i*chunk_size, chunk_size, chunk)
             for i, chunk in
             enumerate(chunk_iter(file_, chunk_size)))
+
 
 class Chunker(object):
     """

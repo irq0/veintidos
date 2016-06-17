@@ -78,7 +78,6 @@ def test_chunker_put_get_single():
     eq(data_in.getvalue(), data_out.getvalue())
 
 
-
 def test_chunker_put_get_multiple():
     cas = CAS(ioctx_cas)
     chunker = Chunker(cas, ioctx_index)
