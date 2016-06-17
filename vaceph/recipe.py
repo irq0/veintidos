@@ -66,6 +66,9 @@ class SimpleRecipe(Recipe):
     def __len__(self):
         return len(self.fps)
 
+    def extents_in_range(self, length, offset):
+        return get_extents_in_range(self.fps, length, offset)
+
     def pack(self):
         return msgpack.packb((self.make_header(), self.fps))
 

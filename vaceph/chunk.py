@@ -185,7 +185,7 @@ class Chunker(object):
         self.log.debug("Retrieved recipe: %d extents", len(recipe))
 
         bufs = []
-        extents = get_extents_in_range(recipe, length, offset)
+        extents = recipe.extents_in_range(length, offset)
         orig_offset = offset
         end = min(offset+length, recipe.get_size())
 
