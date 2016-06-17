@@ -5,7 +5,7 @@
 from nose.tools import eq_ as eq
 from util import random_fp
 
-from vaceph.recipe import SimpleRecipeMaker
+from vaceph.recipe import SimpleRecipe
 
 
 def make_test_fps(n=42):
@@ -15,11 +15,10 @@ def make_test_fps(n=42):
 
 
 def test_SimpleRecipeMaker():
-    r = SimpleRecipeMaker
-
     fps_in = make_test_fps()
 
-    data = r.pack(fps_in)
+    r = SimpleRecipe(fps_in)
+    data = r.pack()
     fps_out = r.unpack(data)
 
-    eq(fps_in, fps_out)
+    eq(fps_in, list(fps_out))

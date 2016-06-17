@@ -9,30 +9,12 @@ import multiprocessing.dummy as multiprocessing
 from functools import partial
 
 import recipe
+from recipe import get_extents_in_range
 
 def make_index_version():
     """ Make version number for index enties """
     return int(time.time()*1000)
 
-
-def get_extents_in_range(extents, length, offset):
-    """
-    Really stupid way to find overlapping extents.
-    But, since we only have a couple of hundred per file..
-    """
-    # TODO use interval tree to get better runtime
-
-    result = []
-
-    a = offset
-    b = offset + length
-
-    result = [(e_offset, e_length, fp)
-              for e_offset, e_length, fp in extents
-              if (a <= e_offset <= b or
-                  a <= (e_offset + e_length) <= b)]
-
-    return result
 
 #
 # Chunk generators
@@ -80,7 +62,7 @@ class Chunker(object):
         """
 
         self.cas = cas_obj
-        self.recipe = recipe.SimpleRecipeMaker
+        self.recipe = recipe.SimpleRecipe
         self.index_io_ctx = index_io_ctx
         self.index_io_ctx.set_namespace("INDEX")
 
@@ -109,9 +91,9 @@ class Chunker(object):
         self.log.debug("Writing data [%r]: %r", name, file_)
 
         chunks = self.chunker(file_)
-        fps = self._write_chunks(chunks)
+        recipe = self.recipe(self._write_chunks(chunks))
 
-        recipe_obj_name = self.cas.put(self.recipe.pack(fps))
+        recipe_obj_name = self.cas.put(recipe.pack())
         index_version_key = str(make_index_version())
 
         self.log.debug("Saving recipe [%s]: %s -> %s",
@@ -167,13 +149,13 @@ class Chunker(object):
 
         self.log.debug("Reading version %r of object %r", version, name)
 
-        fps = self.recipe.unpack(self.cas.get(recipe_obj))
-        self.log.debug("Retrieved recipe: %d extents", len(fps))
+        recipe = self.recipe.unpack(self.cas.get(recipe_obj))
+        self.log.debug("Retrieved recipe: %d extents", len(recipe))
 
         bytes_written = 0
         bytes_retrieved = 0
 
-        for off, size, fp in fps:
+        for off, size, fp in recipe:
             chunk = self.cas.get(fp, off=0, size=size)
 
             self.log.debug("Writing extent: %d:%d (%d)", off, size, len(chunk))
@@ -197,16 +179,16 @@ class Chunker(object):
         version, recipe_obj = self._resolve_recipe_obj_from_version(
             name, version)
 
-        self.log.debug("Reading version %r of object %r: %d:%d", version,
-                       name, offset, length)
+        self.log.debug("Reading version %r of object %r: %d:%d", version, name, offset, length)
 
-        fps = self.recipe.unpack(self.cas.get(recipe_obj))
-        self.log.debug("Retrieved recipe: %d extents", len(fps))
+        recipe = self.recipe.unpack(self.cas.get(recipe_obj))
+        self.log.debug("Retrieved recipe: %d extents", len(recipe))
 
         bufs = []
-        extents = get_extents_in_range(fps, length, offset)
+        extents = get_extents_in_range(recipe, length, offset)
         orig_offset = offset
-        end = offset+length
+        end = min(offset+length, recipe.get_size())
+
         # 2 phase algorithm:
         # 1. get (partial) chunks from CAS pool
 
@@ -273,9 +255,9 @@ class Chunker(object):
         version, recipe_obj = self._resolve_recipe_obj_from_version(name, version)
 
         self.log.debug("Removing version %r of object %r", version, name)
-        fps = self.recipe.unpack(self.cas.get(recipe_obj))
+        recipe = self.recipe.unpack(self.cas.get(recipe_obj))
 
-        for _, _, fp in fps:
+        for _, _, fp in recipe:
             self.cas.down(fp)
 
         w_op = self.index_io_ctx.create_write_op()

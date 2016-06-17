@@ -2,39 +2,80 @@
 # -*- coding: utf-8 -*-
 # ✓
 
-import struct
 import logging
+import msgpack
 
 logging.basicConfig(level=logging.DEBUG)
 
 
-def pack_entry(extent):
-    return struct.pack("<QQ64s", *extent)
+def get_extents_in_range(recipe, length, offset):
+    """
+    Really stupid way to find overlapping extents.
+    But, since we only have a couple of hundred per file..
+    """
+    # TODO use interval tree to get better runtime
+
+    result = []
+
+    a = offset
+    b = offset + length
+
+    result = [(e_offset, e_length, fp)
+              for e_offset, e_length, fp in recipe
+              if (a <= e_offset <= b or
+                  a <= (e_offset + e_length) <= b)]
+
+    return result
 
 
-def unpack_entry(data):
-    return struct.unpack("<QQ64s", data)
+class Recipe(object):
+    def __init__(self, fps):
+        pass
 
-
-class RecipeMaker(object):
-    @staticmethod
-    def pack(fps):
-        return fps
+    def pack(self):
+        raise NotImplementedError()
 
     @staticmethod
     def unpack(data):
-        return data
+        raise NotImplementedError()
+
+    def __iter__(self):
+        raise NotImplementedError()
+
+    def __len__(self):
+        raise NotImplementedError()
 
 
-class SimpleRecipeMaker(RecipeMaker):
-    log = logging.getLogger("Chunker")
+class SimpleRecipe(Recipe):
+    version = 0
+    fps = []
 
-    @staticmethod
-    def pack(fps):
-        payload = "\x1E".join((pack_entry(fp) for fp in fps))
-        return payload
+    def __init__(self, fps):
+        self.fps = fps
+
+    def get_size(self):
+        off, length, _ = self.fps[-1]
+        return off + length
+
+    def make_header(self):
+        return (self.version,)
+
+    def __iter__(self):
+        return self.fps.__iter__()
+
+    def __len__(self):
+        return len(self.fps)
+
+    def pack(self):
+        return msgpack.packb((self.make_header(), self.fps))
 
     @staticmethod
     def unpack(data):
-        fps = [unpack_entry(record)for record in data.split("\x1E")]
-        return fps
+        header, fps = msgpack.unpackb(data, use_list=False)
+
+        r = SimpleRecipe(fps)
+
+        if header[0] != r.version:
+            raise RuntimeError("Unsupported version")
+
+        return r
