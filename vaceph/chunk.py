@@ -10,9 +10,6 @@ from functools import partial
 
 import recipe
 
-logging.basicConfig(level=logging.DEBUG)
-
-
 def make_index_version():
     """ Make version number for index enties """
     return int(time.time()*1000)
@@ -40,6 +37,7 @@ def get_extents_in_range(extents, length, offset):
 #
 # Chunk generators
 #
+
 
 def chunk_iter(file_obj, chunk_size=4 * 1024**2):
     """ Iterate fixed sized chunks in a file """
@@ -161,7 +159,7 @@ class Chunker(object):
         else:
             return (version, dict(self._versions_and_recipes(name))[version])
 
-    def read_full(self, name, file_, version="HEAD"):
+    def read_full(self, name, out_file, version="HEAD"):
         """
         Write all data belonging to name to file
         """
@@ -172,9 +170,6 @@ class Chunker(object):
         fps = self.recipe.unpack(self.cas.get(recipe_obj))
         self.log.debug("Retrieved recipe: %d extents", len(fps))
 
-        # chunks = ((off, size, self.cas.get(fp))
-        #           for off, size, fp in fps)
-
         bytes_written = 0
         bytes_retrieved = 0
 
@@ -183,15 +178,15 @@ class Chunker(object):
 
             self.log.debug("Writing extent: %d:%d (%d)", off, size, len(chunk))
 
-            file_.seek(off)
-            file_.write(chunk[:size])
+            out_file.seek(off)
+            out_file.write(chunk[:size])
 
             bytes_written += size
             bytes_retrieved += len(chunk)
 
         self.log.debug("Wrote %d bytes / Retrieved %d bytes",
                        bytes_written, bytes_retrieved)
-        file_.flush()
+        out_file.flush()
 
         return bytes_written
 

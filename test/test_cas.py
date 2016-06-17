@@ -53,6 +53,7 @@ def test_chunker_no_litter():
     eq(len(cas_objs), 0)
     eq(len(index_objs), 0)
 
+
 def test_cas_put_get():
     cas = CAS(ioctx_cas)
 
@@ -107,6 +108,7 @@ def test_chunker_versions():
     eq(version, chunker.head_version(obj_name))
     eq(version, chunker.versions(obj_name)[0])
 
+
 def test_chunker_multiple_versions():
     cas = CAS(ioctx_cas)
     chunker = Chunker(cas, ioctx_index)
@@ -126,6 +128,7 @@ def test_chunker_multiple_versions():
 
     eq(versions[-1], chunker.head_version(obj_name))
     eq(versions[0], chunker.versions(obj_name)[0])
+
 
 def test_chunker_remove():
     cas = CAS(ioctx_cas)
