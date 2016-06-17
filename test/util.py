@@ -17,3 +17,9 @@ def random_id():
 
 def random_fp():
     return fingerprint(random_id())[1]
+
+
+def eq_buffer(x, y):
+    if x != y:
+        assert False, "x != y ([:16]..[-16:]): %r..%r != %r..%r  " % \
+            (x[:16], x[-16:], y[:16], y[-16:])
