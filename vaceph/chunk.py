@@ -18,6 +18,25 @@ def make_index_version():
     return int(time.time()*1000)
 
 
+def get_extents_in_range(extents, length, offset):
+    """
+    Really stupid way to find overlapping extents.
+    But, since we only have a couple of hundred per file..
+    """
+    # TODO use interval tree to get better runtime
+
+    result = []
+
+    a = offset
+    b = offset + length
+
+    result = [(e_offset, e_length, fp)
+              for e_offset, e_length, fp in extents
+              if (a <= e_offset <= b or
+                  a <= (e_offset + e_length) <= b)]
+
+    return result
+
 #
 # Chunk generators
 #
@@ -175,6 +194,80 @@ class Chunker(object):
         file_.flush()
 
         return bytes_written
+
+    def read(self, name, length, offset, version="HEAD"):
+        """
+        Return offset:length part of chunked file name
+        """
+        version, recipe_obj = self._resolve_recipe_obj_from_version(
+            name, version)
+
+        self.log.debug("Reading version %r of object %r: %d:%d", version,
+                       name, offset, length)
+
+        fps = self.recipe.unpack(self.cas.get(recipe_obj))
+        self.log.debug("Retrieved recipe: %d extents", len(fps))
+
+        bufs = []
+        extents = get_extents_in_range(fps, length, offset)
+        orig_offset = offset
+        end = offset+length
+        # 2 phase algorithm:
+        # 1. get (partial) chunks from CAS pool
+
+        for extent_offset, extent_length, fp in extents:
+            local_offset = max(offset, extent_offset)
+            extent_end = extent_length + extent_offset
+
+            chunk_offset = max(offset-extent_offset, 0)
+            chunk_length = min(end-local_offset, extent_end-local_offset)
+
+            chunk = self.cas.get(fp, off=chunk_offset,
+                                 size=chunk_length)
+
+            bufs.append((offset, chunk[:chunk_length]))
+
+            offset += chunk_length
+
+        # 2. Concatenate (partial) chunks and zero-fill gaps
+        result = ""
+        offset = orig_offset
+        first_off, _ = bufs[0]
+
+        self.log.debug("Reconstructing file from the following chunks: %r",
+                       [(off, len(buf)) for off, buf in bufs])
+
+        if offset < first_off:
+            self.log.debug("Zero fill: %d:%d", offset, (first_off - offset))
+            result += "\x00" * (first_off - offset)
+            offset = first_off
+
+        for current, next in zip(bufs, bufs[1:]):
+            c_off, c_buf = current
+            c_end = (c_off + len(c_buf))
+            n_off, n_buf = next
+
+            self.log.debug("Chunk fill: %d:%d", offset, len(c_buf))
+            result += c_buf
+            offset += len(c_buf)
+
+            if c_end < n_off:
+                self.log.debug("Zero fill: %d:%d", offset, (n_off - c_end))
+                result += "\x00" * (n_off - c_end)
+
+        last_off, last_buf = bufs[-1]
+        last_end = last_off + len(last_buf)
+
+        self.log.debug("Chunk fill: %d:%d", offset, len(last_buf))
+        result += last_buf
+        offset += len(last_buf)
+
+        if last_end < end:
+            self.log.debug("Zero fill: %d:%d", offset,
+                           ((offset + length) - last_end))
+            result += "\x00" * ((offset + length) - last_end)
+
+        return result
 
     def remove_version(self, name, version="HEAD"):
         """

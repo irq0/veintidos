@@ -11,7 +11,7 @@ from rados import Rados, ObjectNotFound
 from vaceph.cas import CAS
 from vaceph.chunk import Chunker
 
-from util import random_id, random_bytes
+from util import random_id, random_bytes, eq_buffer
 
 rados = None
 pool_name = None
@@ -146,3 +146,36 @@ def test_chunker_remove():
 
     # object gone
     assert_raises(ObjectNotFound, chunker.head_version, obj_name)
+
+
+def test_chunker_partial_read():
+    cas = CAS(ioctx_cas)
+    chunker = Chunker(cas, ioctx_index)
+
+    data_in = StringIO("\x00" * chunker.chunk_size +
+                       "\xFF" * chunker.chunk_size)
+    obj_name = random_id()
+
+    version = chunker.write_full(obj_name, data_in)
+
+    middle = chunker.chunk_size / 2
+
+    buf = chunker.read(obj_name, chunker.chunk_size, middle, version)
+
+    eq(len(buf), chunker.chunk_size)
+    eq_buffer("\x00" * (chunker.chunk_size/2) +
+              "\xFF" * (chunker.chunk_size/2), buf)
+
+
+def test_chunker_partial_read_past_size():
+    cas = CAS(ioctx_cas)
+    chunker = Chunker(cas, ioctx_index)
+
+    data_in = StringIO("\x00" * chunker.chunk_size)
+    obj_name = random_id()
+
+    version = chunker.write_full(obj_name, data_in)
+
+    buf = chunker.read(obj_name, chunker.chunk_size, chunker.chunk_size, version)
+
+    eq_buffer(buf, "")
