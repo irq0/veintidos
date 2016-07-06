@@ -7,6 +7,7 @@
 import base64
 import hashlib
 import json
+import struct
 import logging
 import rados
 
@@ -103,3 +104,10 @@ class CAS():
                 return True
         except rados.Error:
             return False
+
+    def list(self):
+        def convert_refcount(r):
+            return struct.unpack("<Q", r)[0]
+
+        return [ (o.key, convert_refcount(o.get_xattr("cas.refcount"))) for o in self.ioctx.list_objects()
+                 if o.nspace == "CAS" ]
