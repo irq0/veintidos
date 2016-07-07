@@ -4,11 +4,18 @@
 
 import time
 import logging
+import threading
+import mmap
 import multiprocessing.dummy as multiprocessing
 
 from functools import partial
 
 import recipe
+
+
+CHUNKER_MAX_OUTSTANDING = 100 # * 4MB
+WRITER_MAX_THREADS = 8
+WRITER_THREAD_CHUNKSIZE = 2
 
 
 def make_index_version():
@@ -22,19 +29,69 @@ def make_index_version():
 
 
 def chunk_iter(file_obj, chunk_size=4 * 1024**2):
-    """ Iterate fixed sized chunks in a file """
-    return iter(lambda: file_obj.read(chunk_size), '')
+    """ Iterate fixed sized chunks in a file"""
+    mm = mmap.mmap(file_obj.fileno(), 0, prot=mmap.PROT_READ)
 
+    chunks = (len(mm) / chunk_size) + 1
+
+    for chunk_start in xrange(chunks):
+        yield lambda start=chunk_start: mm[start:chunk_size]
+
+    mm.close()
 
 def static_chunker(file_, chunk_size):
     """
     Return generator with static chunked extents + data
     for file_
     """
-    return ((i*chunk_size, chunk_size, chunk)
-            for i, chunk in
-            enumerate(chunk_iter(file_, chunk_size)))
+    def mmap_chunker():
+        """Chunker for files"""
+        chunks = (len(mm) / chunk_size) + 1
 
+        for chunk_num in xrange(chunks):
+            chunk_start = chunk_num * chunk_size
+            print chunk_start, chunk_start+chunk_size
+            yield (chunk_start,
+                   chunk_size,
+                   lambda s=chunk_start: mm[s:s+chunk_size])
+
+        # can't close the mmap here since mm regions may still be accessed
+        # using the chunk function above
+#        mm.close()
+
+    def fallback_chunker():
+        """
+        Chunker for anything not supporting mmap like streams
+        """
+
+        chunk_num = 0
+        outstanding = threading.BoundedSemaphore(value=CHUNKER_MAX_OUTSTANDING)
+        while True:
+            chunk_start = chunk_num * chunk_size
+
+            outstanding.acquire()
+
+            chunk = file_.read(chunk_size)
+
+            if not chunk:
+                break
+
+            def chunk_func():
+                """Return chunk and allow for generator to fetch more data"""
+                outstanding.release()
+                return chunk
+
+            yield (chunk_start,
+                   chunk_size,
+                   chunk_func)
+
+            chunk_num += 1
+
+    try:
+        mm = mmap.mmap(file_.fileno(), 0, mmap.MAP_SHARED, mmap.PROT_READ)
+        return mmap_chunker()
+    except:
+        return fallback_chunker()
 
 class Chunker(object):
     """
@@ -67,21 +124,23 @@ class Chunker(object):
         self.index_io_ctx = index_io_ctx
         self.index_io_ctx.set_namespace("INDEX")
 
+    def _cas_put_wrapper(self, args):
+        off, size, chunk = args
+        self.log.debug("Chunk writer worker [%s]: %s:%s",
+                       threading.current_thread().getName(), off, size)
+        return (off, size, self.cas.put(chunk()))
+
     def _write_chunks(self, chunks):
         """
         ( (off, size, data) ) ↦ ( (off, size, fingerprint) )
         """
-        self.log.debug("Writing chunks to CAS pool: Start")
-        pool = multiprocessing.Pool(8)
+        self.log.debug("Starting chunk writers")
+        pool = multiprocessing.Pool(WRITER_MAX_THREADS)
 
-        def cas_put_wrapper(args):
-            off, size, chunk = args
-            return (off, size, self.cas.put(chunk))
+        result = pool.imap(self._cas_put_wrapper, chunks, chunksize=WRITER_THREAD_CHUNKSIZE)
+        self.log.debug("Starting chunk writers: Finished. Waiting for execution")
 
-        result = pool.map(cas_put_wrapper, chunks, chunksize=16)
-        self.log.debug("Writing chunks to CAS pool: Done")
-
-        return result
+        return list(result)
 
     def write_full(self, name, file_):
         """
