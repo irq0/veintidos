@@ -3,6 +3,7 @@
 # ✓
 import uuid
 import os
+import filecmp
 
 from vaceph.cas import fingerprint
 
@@ -23,3 +24,8 @@ def eq_buffer(x, y):
     if x != y:
         assert False, "x != y ([:16]..[-16:]): %r..%r != %r..%r  " % \
             (x[:16], x[-16:], y[:16], y[-16:])
+
+
+def eq_file(x, y):
+    if not filecmp.cmp(x, y, shallow=False):
+        assert False, "Files %s and %s differ" % (x, y)
