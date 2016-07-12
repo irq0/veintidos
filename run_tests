@@ -1,0 +1,3 @@
+#!/bin/sh
+
+nosetests --verbose --logging-format="%(asctime)-15s %(levelname)-9s %(threadName)-12s %(name)-15s %(filename)s:%(lineno)s -> %(funcName)s():\n\t%(message)s"
