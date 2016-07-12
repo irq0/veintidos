@@ -29,6 +29,11 @@ def setup_module():
     ioctx = rados.open_ioctx(pool_name)
 
 
+def teardown_module():
+    global pool_name
+    rados.delete_pool(pool_name)
+
+
 def test_put_correct():
     fp = random_fp()
     data = random_bytes(100)

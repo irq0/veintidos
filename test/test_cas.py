@@ -34,6 +34,11 @@ def setup_module():
     ioctx_index = rados.open_ioctx(pool_name)
 
 
+def teardown_module():
+    global pool_name
+    rados.delete_pool(pool_name)
+
+
 def test_chunker_no_litter():
     cas = CAS(ioctx_cas)
     chunker = Chunker(cas, ioctx_index)
