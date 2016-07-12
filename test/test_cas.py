@@ -75,7 +75,7 @@ def test_chunker_put_get_single():
     data_out = StringIO()
     chunker.read_full(obj_name, data_out, version)
 
-    eq(data_in.getvalue(), data_out.getvalue())
+    eq_buffer(data_in.getvalue(), data_out.getvalue())
 
 
 def test_chunker_put_get_multiple():
@@ -90,7 +90,7 @@ def test_chunker_put_get_multiple():
     data_out = StringIO()
     chunker.read_full(obj_name, data_out, version)
 
-    eq(data_in.getvalue(), data_out.getvalue())
+    eq_buffer(data_in.getvalue(), data_out.getvalue())
 
 
 def test_chunker_versions():
