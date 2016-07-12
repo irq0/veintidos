@@ -8,7 +8,7 @@ from nose.tools import eq_ as eq, assert_raises
 
 from rados import Rados, ObjectNotFound
 
-from vaceph.cas import CAS
+from vaceph.cas import CAS, CompressedCAS
 from vaceph.chunk import Chunker
 
 from util import random_id, random_bytes, eq_buffer
@@ -60,7 +60,23 @@ def test_cas_put_get():
     data_in = random_bytes(99)
 
     obj_name = cas.put(data_in)
-    eq(data_in, cas.get(obj_name))
+    eq_buffer(data_in, cas.get(obj_name))
+
+
+def test_compressed_cas_put_get():
+    ccas = CompressedCAS(ioctx_cas)
+
+    data_in = random_bytes(8*1024**2)
+    obj_name = ccas.put(data_in)
+    eq_buffer(data_in, ccas.get(obj_name, size=8*1024**2))
+
+    data_in = "\xFF" * 11*1024**2
+    obj_name = ccas.put(data_in)
+    eq_buffer(data_in, ccas.get(obj_name, size=11*1024**2))
+
+    data_in = "\x00" * 42
+    obj_name = ccas.put(data_in)
+    eq_buffer(data_in, ccas.get(obj_name))
 
 
 def test_chunker_put_get_single():
