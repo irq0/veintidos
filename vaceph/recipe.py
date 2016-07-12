@@ -5,9 +5,6 @@
 import logging
 import msgpack
 
-logging.basicConfig(level=logging.DEBUG)
-
-
 def get_extents_in_range(recipe, length, offset):
     """
     Really stupid way to find overlapping extents.

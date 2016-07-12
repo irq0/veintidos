@@ -11,9 +11,6 @@ import struct
 import logging
 import rados
 
-logging.basicConfig(level=logging.DEBUG)
-
-
 def fingerprint(data):
     h = hashlib.sha256()
     h.update(data)
