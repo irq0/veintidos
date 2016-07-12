@@ -6,6 +6,7 @@ import time
 import logging
 import threading
 import mmap
+import math
 import multiprocessing.dummy as multiprocessing
 
 from functools import partial
@@ -13,9 +14,9 @@ from functools import partial
 import recipe
 
 
-CHUNKER_MAX_OUTSTANDING = 100 # * 4MB
+CHUNKER_MAX_OUTSTANDING = 100  # * 4MB
 WRITER_MAX_THREADS = 8
-WRITER_THREAD_CHUNKSIZE = 2
+WRITER_THREAD_CHUNKSIZE = 16
 
 
 def make_index_version():
@@ -28,32 +29,34 @@ def make_index_version():
 #
 
 
-def chunk_iter(file_obj, chunk_size=4 * 1024**2):
-    """ Iterate fixed sized chunks in a file"""
-    mm = mmap.mmap(file_obj.fileno(), 0, prot=mmap.PROT_READ)
-
-    chunks = (len(mm) / chunk_size) + 1
-
-    for chunk_start in xrange(chunks):
-        yield lambda start=chunk_start: mm[start:chunk_size]
-
-    mm.close()
-
 def static_chunker(file_, chunk_size):
     """
     Return generator with static chunked extents + data
     for file_
     """
+    log = logging.getLogger("static_chunker")
+
     def mmap_chunker():
         """Chunker for files"""
-        chunks = (len(mm) / chunk_size) + 1
+
+        log.info("Using mmap chunker")
+        chunks = int(math.ceil(float((len(mm)) / float(chunk_size))))
+        log.debug("mmap file: size=%s, chunks=%s", len(mm), chunks)
+
+        size = chunk_size
+        rest = len(mm)
+        if len(mm) < chunk_size:
+            size = len(mm)
 
         for chunk_num in xrange(chunks):
-            chunk_start = chunk_num * chunk_size
-            print chunk_start, chunk_start+chunk_size
-            yield (chunk_start,
-                   chunk_size,
-                   lambda s=chunk_start: mm[s:s+chunk_size])
+            start = chunk_num * chunk_size
+
+            yield (start,
+                   size,
+                   lambda s=start: mm[s:s+chunk_size])
+
+            rest -= size
+            size = min(rest, chunk_size)
 
         # can't close the mmap here since mm regions may still be accessed
         # using the chunk function above
@@ -63,35 +66,47 @@ def static_chunker(file_, chunk_size):
         """
         Chunker for anything not supporting mmap like streams
         """
+        log.info("Using fallback chunker")
+        log.debug("Fallback chunker settings: max_outstanding=%s",
+                  CHUNKER_MAX_OUTSTANDING)
 
         chunk_num = 0
         outstanding = threading.BoundedSemaphore(value=CHUNKER_MAX_OUTSTANDING)
-        while True:
-            chunk_start = chunk_num * chunk_size
 
+        def make_chunk_func(chunk):
+            def chunk_func():
+                log.debug("Realizing chunk: len=%s", len(chunk))
+                return chunk
+            return chunk_func
+
+        start = 0
+        while True:
             outstanding.acquire()
 
             chunk = file_.read(chunk_size)
+            size = len(chunk)
+            log.debug("Read chunk: start=%s, num=%s, size=%s",
+                      start, chunk_num, size)
 
-            if not chunk:
+            if chunk:
+                yield (start,
+                       size,
+                       make_chunk_func(chunk))
+
+                chunk_num += 1
+                if size < chunk_size:
+                    break
+
+                start = chunk_num * chunk_size
+            else:
                 break
-
-            def chunk_func():
-                """Return chunk and allow for generator to fetch more data"""
-                outstanding.release()
-                return chunk
-
-            yield (chunk_start,
-                   chunk_size,
-                   chunk_func)
-
-            chunk_num += 1
 
     try:
         mm = mmap.mmap(file_.fileno(), 0, mmap.MAP_SHARED, mmap.PROT_READ)
         return mmap_chunker()
     except:
         return fallback_chunker()
+
 
 class Chunker(object):
     """
@@ -125,10 +140,17 @@ class Chunker(object):
         self.index_io_ctx.set_namespace("INDEX")
 
     def _cas_put_wrapper(self, args):
-        off, size, chunk = args
+        off, size, chunk_func = args
+
         self.log.debug("Chunk writer worker [%s]: %s:%s",
                        threading.current_thread().getName(), off, size)
-        return (off, size, self.cas.put(chunk()))
+
+        chunk = chunk_func()
+
+        assert len(chunk) == size, \
+            "extent.size != chunk size ({} vs. {})".format(size, len(chunk))
+
+        return (off, size, self.cas.put(chunk))
 
     def _write_chunks(self, chunks):
         """
