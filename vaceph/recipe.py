@@ -46,6 +46,7 @@ class Recipe(object):
 class SimpleRecipe(Recipe):
     version = 0
     fps = []
+    log = logging.getLogger("SimpleRecipe")
 
     def __init__(self, fps):
         self.fps = fps
@@ -71,7 +72,17 @@ class SimpleRecipe(Recipe):
 
     @staticmethod
     def unpack(data):
-        header, fps = msgpack.unpackb(data, use_list=False)
+
+        try:
+            header, fps = msgpack.unpackb(data, use_list=False)
+
+        except msgpack.ExtraData, e:
+            log = logging.getLogger("SimpleRecipe")
+            log.exception("Recipe unpack error")
+            log.debug("Extra Data: %r", e.extra)
+            log.debug("Unpacked: %r", e.unpacked)
+
+            return None
 
         r = SimpleRecipe(fps)
 
