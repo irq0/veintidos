@@ -76,6 +76,7 @@ def static_chunker(file_, chunk_size):
         def make_chunk_func(chunk):
             def chunk_func():
                 log.debug("Realizing chunk: len=%s", len(chunk))
+                outstanding.release()
                 return chunk
             return chunk_func
 
