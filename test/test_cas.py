@@ -68,6 +68,17 @@ def test_cas_put_get():
     eq_buffer(data_in, cas.get(obj_name))
 
 
+def test_cas_put_deduplicatable_content():
+    cas = CAS(ioctx_cas)
+
+    data_in = "\x00" * (4 * 1024**2)
+
+    obj_name_1 = cas.put(data_in)
+    obj_name_2 = cas.put(data_in)
+
+    eq(obj_name_1, obj_name_2)
+
+
 def test_compressed_cas_put_get():
     ccas = CompressedCAS(ioctx_cas)
 
@@ -104,6 +115,21 @@ def test_chunker_put_get_multiple():
     chunker = Chunker(cas, ioctx_index)
 
     data_in = StringIO(random_bytes(chunker.chunk_size*4))
+    obj_name = random_id()
+
+    version = chunker.write_full(obj_name, data_in)
+
+    data_out = StringIO()
+    chunker.read_full(obj_name, data_out, version)
+
+    eq_buffer(data_in.getvalue(), data_out.getvalue())
+
+
+def test_chunker_put_get_multiple_fraction():
+    cas = CAS(ioctx_cas)
+    chunker = Chunker(cas, ioctx_index)
+
+    data_in = StringIO(random_bytes(int(chunker.chunk_size*1.5)))
     obj_name = random_id()
 
     version = chunker.write_full(obj_name, data_in)

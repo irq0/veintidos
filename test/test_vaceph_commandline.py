@@ -10,7 +10,7 @@ import threading
 from rados import Rados
 from nose.tools import eq_ as eq
 
-from util import random_bytes, random_id, eq_file
+from util import random_bytes, random_id, eq_file, zeros
 
 POOL_NAME = None
 
@@ -30,21 +30,21 @@ def teardown_module():
     rados.delete_pool(POOL_NAME)
 
 
-def prepare_input_file(size):
+def prepare_input_file(size, content_func=random_bytes):
     f = tempfile.NamedTemporaryFile(delete=False)
-    f.write(random_bytes(size))
+    f.write(content_func(size))
     f.close()
 
     print "Input file:", f.name
     return f.name
 
 
-def prepare_input_fifo(size):
+def prepare_input_fifo(size, content_func=random_bytes):
     # Write data first to a file and then from there to fifo
     # (.. so that we can compare contents with the output file later)
 
     f = tempfile.NamedTemporaryFile(delete=False)
-    f.write(random_bytes(size))
+    f.write(content_func(size))
     f.close()
     f_fn = f.name
 
@@ -71,9 +71,9 @@ def prepare_output_file():
     return f.name
 
 
-def put_and_compare_file(size):
+def put_and_compare_file(size, content_func):
     obj = random_id()
-    in_file = prepare_input_file(size)
+    in_file = prepare_input_file(size, content_func)
     out_file = prepare_output_file()
 
     ret = call(["./vaceph.py",
@@ -94,9 +94,9 @@ def put_and_compare_file(size):
     os.unlink(out_file)
 
 
-def put_and_compare_fifo(size):
+def put_and_compare_fifo(size, content_func):
     obj = random_id()
-    in_file, in_fifo = prepare_input_fifo(size)
+    in_file, in_fifo = prepare_input_fifo(size, content_func)
     out_file = prepare_output_file()
 
     ret = call(["./vaceph.py",
@@ -119,16 +119,24 @@ def put_and_compare_fifo(size):
 
 
 def test_put_from_fifo_with_small_input_gets_the_same_content_back():
-    put_and_compare_fifo(42)
+    put_and_compare_fifo(42, random_bytes)
+    put_and_compare_fifo(42, zeros)
 
 
 def test_put_from_file_with_small_input_gets_the_same_content_back():
-    put_and_compare_file(42)
+    put_and_compare_file(42, random_bytes)
+    put_and_compare_file(42, zeros)
 
 
 def test_put_from_fifo_8M_input_gets_the_same_content_back():
-    put_and_compare_fifo(8*1024**2)
+    put_and_compare_fifo(8*1024**2, random_bytes)
+    put_and_compare_fifo(8*1024**2, zeros)
 
 
 def test_put_from_file_8M_input_gets_the_same_content_back():
-    put_and_compare_file(8*1024**2)
+    put_and_compare_file(8*1024**2, random_bytes)
+    put_and_compare_file(8*1024**2, zeros)
+
+
+def test_put_from_file_100M_zeros():
+    put_and_compare_file(100*1024**2, zeros)

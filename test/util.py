@@ -12,6 +12,10 @@ def random_bytes(size=4*1024**2):
     return os.urandom(size)
 
 
+def zeros(size=4*1024**2):
+    return "\x00" * size
+
+
 def random_id():
     return str(uuid.uuid4())
 
