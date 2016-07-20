@@ -1,0 +1,5 @@
+* Dependencies
+- python 2.7
+- python rados bindings with execute support
+- msgpack
+- python snappy
