@@ -7,7 +7,7 @@ import argparse
 
 from rados import Rados, ObjectExists
 
-from vaceph.cas import CAS as CAS_
+import vaceph.cas as cas
 from vaceph.chunk import Chunker
 
 RADOS = None
@@ -34,22 +34,31 @@ def setup_rados(args):
 
     global CAS
     global CHUNKER
-    CAS = CAS_(IOCTX_CAS)
+
+    if args.no_compression:
+        CAS = cas.CAS(IOCTX_CAS)
+    else:
+        CAS = cas.CompressedCAS(IOCTX_CAS)
+
     CHUNKER = Chunker(CAS, IOCTX_INDEX)
 
 
 def cmd_ls(args):
-    print "CAS Objects:"
-    for obj, refcount in CAS.list():
-        print obj, "#", refcount
+
+    if args.cas:
+        print "CAS Objects:"
+        for obj, refcount in CAS.list():
+            print obj, "#", refcount
 
     print
-    print "Index Objects:"
-    objs = [o.key for o in IOCTX_INDEX.list_objects()
-            if o.nspace == "INDEX"]
 
-    for obj in objs:
-        print obj, "→", ", ".join(CHUNKER.versions(obj))
+    if args.index:
+        print "Index Objects:"
+        objs = [o.key for o in IOCTX_INDEX.list_objects()
+                if o.nspace == "INDEX"]
+
+        for obj in objs:
+            print obj, "→", ", ".join(CHUNKER.versions(obj))
 
 
 def cmd_put(args):
@@ -70,7 +79,8 @@ def cmd_get(args):
 
 def parse_cmdline():
     parser = argparse.ArgumentParser(prog="vaceph client")
-    parser.add_argument("--pool", type=str, default="vaceph1", help="Ceph pool")
+    parser.add_argument("--pool", type=str, default="vaceph", help="Ceph pool")
+    parser.add_argument("--no-compression", action="store_true", help="Don't use compressed CAS writer/reader")
     parser.add_argument("--debug", action="store_const", dest="loglevel",
                         const=logging.DEBUG)
     parser.add_argument("--verbose", action="store_const", dest="loglevel",
@@ -80,12 +90,14 @@ def parse_cmdline():
 
     ls_parser = subparsers.add_parser(
         "ls", help="List CAS and INDEX objects")
+    ls_parser.add_argument('--no-index', action="store_false", dest="index")
+    ls_parser.add_argument('--no-cas', action="store_false", dest="cas")
     ls_parser.set_defaults(func=cmd_ls)
 
     put_parser = subparsers.add_parser(
         "put", help="Store file to CAS pool and write INDEX")
     put_parser.add_argument('name', type=str)
-    put_parser.add_argument('file', type=argparse.FileType('r'))
+    put_parser.add_argument('file', type=argparse.FileType('rb'))
     put_parser.set_defaults(func=cmd_put)
 
     rm_parser = subparsers.add_parser(
@@ -97,7 +109,7 @@ def parse_cmdline():
     get_parser = subparsers.add_parser(
         "get", help="Retrieve file from CAS pool")
     get_parser.add_argument('name', type=str)
-    get_parser.add_argument('file', type=argparse.FileType('w'))
+    get_parser.add_argument('file', type=argparse.FileType('w+b'))
     get_parser.add_argument('--version', type=str, default="HEAD")
     get_parser.set_defaults(func=cmd_get)
 
