@@ -1,0 +1,5 @@
+#!/bin/sh
+
+export PATH=/ceph-devel/src/src:$PATH
+export CEPH_CONF=/ceph-devel/conf/caster/ceph.conf
+export PS1="(ceph-dev) $PS1" 
