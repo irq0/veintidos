@@ -22,3 +22,11 @@ def test_SimpleRecipeMaker():
     fps_out = r.unpack(data)
 
     eq(fps_in, list(fps_out))
+
+    fps_in = make_test_fps(1000000)
+
+    r = SimpleRecipe(fps_in)
+    data = r.pack()
+    fps_out = r.unpack(data)
+
+    eq(fps_in, list(fps_out))
