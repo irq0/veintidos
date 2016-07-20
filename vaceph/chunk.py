@@ -232,7 +232,7 @@ class Chunker(object):
 
         self.log.debug("Reading version %r of object %r", version, name)
 
-        recipe = self.recipe.unpack(self.cas.get(recipe_obj))
+        recipe = self.recipe.unpack(self.cas.get(recipe_obj, size=100*1024**2))
         self.log.debug("Retrieved recipe: %d extents", len(recipe))
 
         bytes_written = 0
