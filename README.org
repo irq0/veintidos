@@ -1,5 +1,88 @@
+* veintidos
+Prototype for content-addressed self-deduplicating storage using Ceph.
+Similar to Plan 9 [[https://en.wikipedia.org/wiki/Venti][Venti]], but on top of [[http://ceph.com/papers/weil-rados-pdsw07.pdf][RADOS]].
+
+* Design
+** Idea
+The core idea is to content address Ceph objects. Usually Ceph object
+names are arbitrarily chosen by a client application. In content
+addressed storage (CAS) this object name is determined by
+fingerprinting the content. Thus, writing the same data twice results
+in only one object stored. CAS pools therefore deduplicate data. Each
+CAS object also has a reference counter, so that unused objects can be
+identified and deleted.
+
+Additionaly multiple objects can be grouped into a /file/, that contains
+versioned extent-like /recipes/ that point to CAS objects.
+
+** Implementation
+The system consists of a Ceph Object Class ([[github]]), that implements
+reference counting and metadata storage for CAS objects and a client
+library that adds chunking and recipes.
+
+*** Building Blocks
+**** Recipes
+Are implemented as a list of extents. Each entry has the form
+(start offset, length, fingerprint)
+
+**** Index Objects
+Map filenames to (version, fingerprint to recipe objects)
+
+**** CAS Objects
+Use the fingerprint of their content as their name. The objects also
+store additional metadata for the compression and fingerprinting algorithm, and a
+reference count.
+
+**** Chunker
+A static chunker, that writes data to CAS objects and creates an index
+object for the input file.
+
+**** Ceph Object Class
+Extends RADOS with special CAS operations, mainly reference counting
+and extra metadata.
+
+**** (lib)CAS
+Client-side layer for the CAS object classes. Adds compression and fingerprinting
+
+*** API Outline
+- cas.put(daten) -> fingerprint (refcount++)
+- cas.get(fingerprint) -> daten
+- cas.up(fingerprint) -> (refcount++)
+- cas.down(fingerprint) ->  (refcount–)
+- cas.list() -> [[fingerprint, refcount], …]
+
+- chunker.write_full(name, daten) -> version (cas.put(daten), cas.put(recipe))
+- chunker.read_full(name) -> daten (cas.get(recipe), cas.get(daten))
+- chunker.read(name, off, size) -> daten
+- chunker.versions(name) -> [HEAD, …] chunker.remove_version(name, version)
+
+* Usage
+The code contains both a library and a command line utility to write
+files to a CAS pool.
+
+** CLI
+
+#+BEGIN_SRC sh
+veintidos.py put "backup" <(tar cvf - /)
+veintidos.py get "backup" root_backup.tar
+#+END_SRC
+
+** Library
+ventidos consists of two libraries
+
+*** CAS
+Thin layer over the RADOS / CAS Object class. Provides methods to put,
+get and increment / decrement the reference counter of objects
+
+*** Chunk
+Adds chunking and recipes on top of the CAS library.
+
+
 * Dependencies
-- python 2.7
-- python rados bindings with execute support
+- Ceph Cluster with /CAS/ object class installed. Not part of mainline
+  Ceph. Branch: [[https://github.com/irq0/ceph/tree/wip-cas-cls][github]]
+- Python 2.7
+- Python RADOS bindings with execute support
 - msgpack
-- python snappy
+- python-snappy
+- nose for the unittests
