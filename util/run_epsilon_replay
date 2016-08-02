@@ -94,10 +94,10 @@ for snap in ${snaps[@]}; do
 
     set -x
 
-    time ./vaceph.py --debug --compression put "neuromancer@${snap}" \
+    time ./veintidos.py --debug --compression put "neuromancer@${snap}" \
 	 <(snap_tar "$snap") \
-	 2>&1 | ts | tee "log/vaceph_${snap}.log" | egrep '(PUT|GET|UP|DOWN|version)'
-    time ./vaceph.py ls > "log/after_snap_${snap}.ls"
+	 2>&1 | ts | tee "log/veintidos_${snap}.log" | egrep '(PUT|GET|UP|DOWN|version)'
+    time ./veintidos.py ls > "log/after_snap_${snap}.ls"
     ceph osd df > "log/after_snap_${snap}.df"
 
     set +x

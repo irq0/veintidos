@@ -5,7 +5,7 @@ import uuid
 import os
 import filecmp
 
-from vaceph.cas import fingerprint
+from veintidos.cas import fingerprint
 
 
 def random_bytes(size=4*1024**2):

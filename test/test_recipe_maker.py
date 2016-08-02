@@ -5,7 +5,7 @@
 from nose.tools import eq_ as eq
 from util import random_fp
 
-from vaceph.recipe import SimpleRecipe
+from veintidos.recipe import SimpleRecipe
 
 
 def make_test_fps(n=42):

@@ -76,13 +76,13 @@ def put_and_compare_file(size, content_func):
     in_file = prepare_input_file(size, content_func)
     out_file = prepare_output_file()
 
-    ret = call(["./vaceph.py",
+    ret = call(["./veintidos.py",
                 "--pool", POOL_NAME,
                 "put", obj,
                 in_file])
     eq(0, ret)
 
-    ret = call(["./vaceph.py",
+    ret = call(["./veintidos.py",
                 "--pool", POOL_NAME,
                 "get", obj,
                 out_file])
@@ -99,13 +99,13 @@ def put_and_compare_fifo(size, content_func):
     in_file, in_fifo = prepare_input_fifo(size, content_func)
     out_file = prepare_output_file()
 
-    ret = call(["./vaceph.py",
+    ret = call(["./veintidos.py",
                 "--pool", POOL_NAME,
                 "put", obj,
                 in_fifo])
     eq(0, ret)
 
-    ret = call(["./vaceph.py",
+    ret = call(["./veintidos.py",
                 "--pool", POOL_NAME,
                 "get", obj,
                 out_file])

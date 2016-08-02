@@ -1,5 +1,6 @@
 #!/bin/sh
 
-export PATH=/ceph-devel/src/src:$PATH
+export PYTHONPATH=/ceph-devel/build/lib/cython_modules/lib.linux-x86_64-2.7
+export PATH=/ceph-devel/build/bin:$PATH
 export CEPH_CONF=/ceph-devel/conf/caster/ceph.conf
 export PS1="(ceph-dev) $PS1" 

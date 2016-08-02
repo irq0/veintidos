@@ -40,7 +40,7 @@ def test_put_correct():
 
     meta = {
         "fp_algo": "test",
-        "lib": "vaceph_unittests",
+        "lib": "veintidos_unittests",
         "compression": "no",
     }
 
@@ -62,7 +62,7 @@ def test_put_broken():
 
     meta = {
         "fp_algo": "test",
-        "lib": "vaceph_unittests",
+        "lib": "veintidos_unittests",
         "compression": "no",
     }
 
@@ -86,7 +86,7 @@ def test_up_down():
 
     meta = {
         "fp_algo": "test",
-        "lib": "vaceph_unittests",
+        "lib": "veintidos_unittests",
         "compression": "no",
     }
 

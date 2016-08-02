@@ -18,7 +18,7 @@ def unpack_entry(data):
 
 
 class RecipeMaker(object):
-    __version__ = "vaceph-recipe-maker-0.1"
+    __version__ = "veintidos-recipe-maker-0.1"
 
     log = logging.getLogger("Chunker")
 

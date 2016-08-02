@@ -8,8 +8,8 @@ from nose.tools import eq_ as eq, assert_raises
 
 from rados import Rados, ObjectNotFound
 
-from vaceph.cas import CAS, CompressedCAS
-from vaceph.chunk import Chunker
+from veintidos.cas import CAS, CompressedCAS
+from veintidos.chunk import Chunker
 
 from util import random_id, random_bytes, eq_buffer
 

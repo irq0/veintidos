@@ -120,7 +120,7 @@ class Chunker(object):
         - Return key of that omap entry (=version)
     """
 
-    __version__ = "vaceph-chunker-0.1"
+    __version__ = "veintidos-chunker-0.1"
 
     log = logging.getLogger("Chunker")
     chunk_size = 4 * 1024**2

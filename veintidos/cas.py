@@ -25,7 +25,7 @@ class CASError(Exception):
 
 
 class CAS(object):
-    __version__ = "vaceph-cas-0.1"
+    __version__ = "veintidos-cas-0.1"
 
     log = logging.getLogger("CAS")
 

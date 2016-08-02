@@ -7,8 +7,8 @@ import argparse
 
 from rados import Rados, ObjectExists
 
-import vaceph.cas as cas
-from vaceph.chunk import Chunker
+import veintidos.cas as cas
+from veintidos.chunk import Chunker
 
 RADOS = None
 CAS = None
@@ -78,8 +78,8 @@ def cmd_get(args):
 
 
 def parse_cmdline():
-    parser = argparse.ArgumentParser(prog="vaceph client")
-    parser.add_argument("--pool", type=str, default="vaceph", help="Ceph pool")
+    parser = argparse.ArgumentParser(prog="veintidos client")
+    parser.add_argument("--pool", type=str, default="veintidos", help="Ceph pool")
     parser.add_argument("--no-compression", action="store_true", help="Don't use compressed CAS writer/reader")
     parser.add_argument("--debug", action="store_const", dest="loglevel",
                         const=logging.DEBUG)

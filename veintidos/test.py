@@ -10,7 +10,7 @@ import os
 import logging
 import uuid
 
-import vaceph
+import veintidos
 from cas import CAS
 from chunk import Chunker
 
@@ -18,7 +18,7 @@ logging.basicConfig(level=logging.DEBUG)
 
 
 def main():
-    cluster = vaceph.setup_ceph_local_dev()
+    cluster = veintidos.setup_ceph_local_dev()
 
     ioctx_cas = cluster.open_ioctx("rbd")
     ioctx_index = cluster.open_ioctx("rbd")
