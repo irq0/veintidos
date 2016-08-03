@@ -1,4 +1,4 @@
-* veintidos
+* Veintidos
 Prototype for content-addressed self-deduplicating storage using Ceph.
 Similar to Plan 9 [[https://en.wikipedia.org/wiki/Venti][Venti]], but on top of [[http://ceph.com/papers/weil-rados-pdsw07.pdf][RADOS]].
 
@@ -12,39 +12,55 @@ in only one object stored. CAS pools therefore deduplicate data. Each
 CAS object also has a reference counter, so that unused objects can be
 identified and deleted.
 
-Additionaly multiple objects can be grouped into a /file/, that contains
+Additionally multiple objects can be grouped into a /file/, that contains
 versioned extent-like /recipes/ that point to CAS objects.
 
 ** Implementation
 The system consists of a Ceph Object Class ([[github]]), that implements
-reference counting and metadata storage for CAS objects and a client
-library that adds chunking and recipes.
+reference counting and metadata storage for CAS objects, and a client
+library that adds chunking, recipes, and compression.
 
-*** Building Blocks
-**** Recipes
-Are implemented as a list of extents. Each entry has the form
-(start offset, length, fingerprint)
+*** Namespaces
+[[./_img/veintidos_namespaces.png]]
 
-**** Index Objects
-Map filenames to (version, fingerprint to recipe objects)
+Veintidos uses two namespaces: (1) The /CAS/ namespace for data chunks, (2)
+/INDEX/ namespace to map filenames to recipe objects.
+With a recipe object a client can reassemble a file that consists of
+many chunks.
 
-**** CAS Objects
+CAS objects are identified by their fingerprint. Currently the SHA-256
+hash of the content.
+
+Index objects do not have regular data, but use an object map instead.
+Each key represents a version pointing to the fingerprint of a recipe.
+
+*** CAS Objects
 Use the fingerprint of their content as their name. The objects also
 store additional metadata for the compression and fingerprinting algorithm, and a
 reference count.
 
-**** Chunker
-A static chunker, that writes data to CAS objects and creates an index
-object for the input file.
+*** Recipes
+[[./_img/veintidos_recipe.png]]
 
-**** Ceph Object Class
-Extends RADOS with special CAS operations, mainly reference counting
-and extra metadata.
+Veintidos's chunker stores recipes as CAS objects after it has written
+all chunks. In the current implementation every chunk has a fixed
+size.
 
-**** (lib)CAS
-Client-side layer for the CAS object classes. Adds compression and fingerprinting
+By itself recipe objects don't store the original filename, they just
+describe how to reassemble a file from CAS objects.
 
-*** API Outline
+Recipes are stored as a list of extents. Each entry has the form
+(offset, length, fingerprint)
+
+*** Index Objects
+[[./_img/veintidos_index_object.png]]
+
+To associate recipes with file names (or any other client side data
+unit) veintidos uses index objects. Each index object has a user
+defined name and uses object maps to map a version to the name of a
+recipe CAS object. Currently versions are UNIX timestamps.
+
+** API Outline
 - cas.put(daten) -> fingerprint (refcount++)
 - cas.get(fingerprint) -> daten
 - cas.up(fingerprint) -> (refcount++)
@@ -68,14 +84,14 @@ veintidos.py get "backup" root_backup.tar
 #+END_SRC
 
 ** Library
-ventidos consists of two libraries
+Ventidos has two layers:
 
 *** CAS
 Thin layer over the RADOS / CAS Object class. Provides methods to put,
 get and increment / decrement the reference counter of objects
 
 *** Chunk
-Adds chunking and recipes on top of the CAS library.
+Adds chunking and recipes on top of CAS.
 
 
 * Dependencies
