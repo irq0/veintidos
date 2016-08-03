@@ -72,6 +72,18 @@ recipe CAS object. Currently versions are UNIX timestamps.
 - chunker.read(name, off, size) -> daten
 - chunker.versions(name) -> [HEAD, …] chunker.remove_version(name, version)
 
+** Limitations
+Since veintidos is a prototype the implementation has some limitations:
+
+- Client-side code is written in Python
+- CAS PUT uses JSON
+  - Data is Base64 encoded
+  - Metadata is taken as is by the object class
+- CAS GET does not detect compressed objects and transparently
+  decompresses them.
+- CAS GET is implemented using regular RADOS operations
+- CAS Chunker has no partial write support
+- Recipes are implemented client side and not in an object class
 * Usage
 The code contains both a library and a command line utility to write
 files to a CAS pool.
