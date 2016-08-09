@@ -9,6 +9,7 @@ from rados import Rados, ObjectExists
 
 import veintidos.cas as cas
 from veintidos.chunk import Chunker
+from veintidos.cas import Compressor
 
 RADOS = None
 CAS = None
@@ -35,10 +36,10 @@ def setup_rados(args):
     global CAS
     global CHUNKER
 
-    if args.no_compression:
-        CAS = cas.CAS(IOCTX_CAS)
+    if "compression" in args:
+        CAS = cas.CAS(IOCTX_CAS, compression=args.compression)
     else:
-        CAS = cas.CompressedCAS(IOCTX_CAS)
+        CAS = cas.CAS(IOCTX_CAS)
 
     if "chunk_size" in args:
         CHUNKER = Chunker(CAS, IOCTX_INDEX, chunk_size=args.chunk_size)
@@ -83,7 +84,6 @@ def cmd_get(args):
 def parse_cmdline():
     parser = argparse.ArgumentParser(prog="veintidos client")
     parser.add_argument("--pool", type=str, default="veintidos", help="Ceph pool")
-    parser.add_argument("--no-compression", action="store_true", help="Don't use compressed CAS writer/reader")
     parser.add_argument("--debug", action="store_const", dest="loglevel",
                         const=logging.DEBUG)
     parser.add_argument("--verbose", action="store_const", dest="loglevel",
@@ -99,6 +99,8 @@ def parse_cmdline():
 
     put_parser = subparsers.add_parser(
         "put", help="Store file to CAS pool and write INDEX")
+    put_parser.add_argument("--compression", default="snappy", choices=Compressor.supported(),
+                            help="Select compression algorithm for _new_ objects")
     put_parser.add_argument("--chunk-size", type=int, default=(4 * 1024**2), help="Size of chunks in byte")
     put_parser.add_argument('name', type=str)
     put_parser.add_argument('file', type=argparse.FileType('rb'))

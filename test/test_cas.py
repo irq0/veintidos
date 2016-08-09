@@ -8,7 +8,7 @@ from nose.tools import eq_ as eq, assert_raises
 
 from rados import Rados, ObjectNotFound
 
-from veintidos.cas import CAS, CompressedCAS
+from veintidos.cas import CAS, Compressor
 from veintidos.chunk import Chunker
 
 from util import random_id, random_bytes, eq_buffer
@@ -79,20 +79,44 @@ def test_cas_put_deduplicatable_content():
     eq(obj_name_1, obj_name_2)
 
 
-def test_compressed_cas_put_get():
-    ccas = CompressedCAS(ioctx_cas)
-
+def compressed_cas_put_get(cas):
     data_in = random_bytes(8*1024**2)
-    obj_name = ccas.put(data_in)
-    eq_buffer(data_in, ccas.get(obj_name, size=8*1024**2))
+    obj_name = cas.put(data_in)
+    eq_buffer(data_in, cas.get(obj_name, size=8*1024**2))
+    cas.down(obj_name)
 
     data_in = "\xFF" * 11*1024**2
-    obj_name = ccas.put(data_in)
-    eq_buffer(data_in, ccas.get(obj_name, size=11*1024**2))
+    obj_name = cas.put(data_in)
+    eq_buffer(data_in, cas.get(obj_name, size=11*1024**2))
+    cas.down(obj_name)
 
     data_in = "\x00" * 42
-    obj_name = ccas.put(data_in)
-    eq_buffer(data_in, ccas.get(obj_name))
+    obj_name = cas.put(data_in)
+    eq_buffer(data_in, cas.get(obj_name))
+    cas.down(obj_name)
+
+
+def test_compressed_cas_put_get():
+    for compression in Compressor.supported():
+        print compression
+        cas = CAS(ioctx_cas, compression=compression)
+        compressed_cas_put_get(cas)
+
+
+def test_mixed_compression():
+    # put something uncompressed and then put new objs with compression
+
+    cas = CAS(ioctx_cas, compression="no")
+    data_in = "\xFF" * 11*1024**2
+    obj_name = cas.put(data_in)
+    eq_buffer(data_in, cas.get(obj_name, size=11*1024**2))
+
+    for compression in Compressor.supported():
+        ccas = CAS(ioctx_cas, compression=compression)
+        tmp_obj_name = ccas.put(data_in)
+        eq_buffer(data_in, ccas.get(tmp_obj_name, size=11*1024**2))
+
+    eq_buffer(data_in, cas.get(obj_name, size=11*1024**2))
 
 
 def test_chunker_put_get_single():
