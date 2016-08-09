@@ -123,11 +123,9 @@ class Chunker(object):
     __version__ = "veintidos-chunker-0.1"
 
     log = logging.getLogger("Chunker")
-    chunk_size = 4 * 1024**2
     cas_worker = None
-    chunker = partial(static_chunker, chunk_size=chunk_size)
 
-    def __init__(self, cas_obj, index_io_ctx):
+    def __init__(self, cas_obj, index_io_ctx, chunk_size=(4 * 1024**2)):
         """
         cas_obj: CAS object for objects and recipes
         index_io_ctx: io_ctx for the recipe index (name -> recipe mappings)
@@ -139,6 +137,10 @@ class Chunker(object):
         self.recipe = recipe.SimpleRecipe
         self.index_io_ctx = index_io_ctx
         self.index_io_ctx.set_namespace("INDEX")
+        self.chunk_size = chunk_size
+        self.chunker = partial(static_chunker, chunk_size=chunk_size)
+
+        self.log.debug("Chunker initialized: static chunks, length %d byte", self.chunk_size)
 
     def _cas_put_wrapper(self, args):
         off, size, chunk_func = args

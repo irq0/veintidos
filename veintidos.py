@@ -40,7 +40,10 @@ def setup_rados(args):
     else:
         CAS = cas.CompressedCAS(IOCTX_CAS)
 
-    CHUNKER = Chunker(CAS, IOCTX_INDEX)
+    if "chunk_size" in args:
+        CHUNKER = Chunker(CAS, IOCTX_INDEX, chunk_size=args.chunk_size)
+    else:
+        CHUNKER = Chunker(CAS, IOCTX_INDEX)
 
 
 def cmd_ls(args):
@@ -96,6 +99,7 @@ def parse_cmdline():
 
     put_parser = subparsers.add_parser(
         "put", help="Store file to CAS pool and write INDEX")
+    put_parser.add_argument("--chunk-size", type=int, default=(4 * 1024**2), help="Size of chunks in byte")
     put_parser.add_argument('name', type=str)
     put_parser.add_argument('file', type=argparse.FileType('rb'))
     put_parser.set_defaults(func=cmd_put)
