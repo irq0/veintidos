@@ -2,88 +2,140 @@
 Prototype for content-addressed self-deduplicating storage using Ceph.
 Similar to Plan 9 [[https://en.wikipedia.org/wiki/Venti][Venti]], but on top of [[http://ceph.com/papers/weil-rados-pdsw07.pdf][RADOS]].
 
-* Design
-** Idea
+* Idea
 The core idea is to content address Ceph objects. Usually Ceph object
 names are arbitrarily chosen by a client application. In content
 addressed storage (CAS) this object name is determined by
-fingerprinting the content. Thus, writing the same data twice results
-in only one object stored. CAS pools therefore deduplicate data. Each
-CAS object also has a reference counter, so that unused objects can be
-identified and deleted.
+fingerprinting the content.
 
-Additionally multiple objects can be grouped into a /file/, that contains
-versioned extent-like /recipes/ that point to CAS objects.
+Therefore, writing the same data results in the same fingerprint. The
+same fingerprint means that we access the same object, since we use
+the fingerprint as its name.
 
-** Implementation
+To keep track about how many clients refer to a single object, an
+object stores a reference counter, that is incremented every time the
+same data is written by a client.
+
+The reference count is also used to determine when an object is not
+used anymore.
+
+With this approach in Ceph we get storage pools that deduplicate data.
+
+The drawback of this approach is, that extra metadata is necessary to
+map client /file/ names to CAS objects. The extra metadata is stored in
+index objects that use a filename as the object name just as regular
+Ceph objects. They contain an object map with a map of version numbers
+and references to recipe objects.
+
+Recipe objects are stored like CAS objects, so that storing the same
+file twice will also deduplicate the recipe object.
+
+A recipe object stores an extent-like list that maps file regions to
+fingerprints of CAS objects.
+
+
+** Example
+Situation: A client stores a backup tarball of several gigabytes using
+Veintidos.
+
+First Veintidos uses a chunker to split the tarball. The chunker
+generates a list of chunk extents: (offset, size, data chunk).
+
+The data chunk is written as a CAS object and the chunk extent is
+changed to (offset, size, fingerprint).
+
+All of this tuples are recorded and after all CAS writes finish
+converted into a recipe.
+
+This recipe is then written as another CAS object and its fingerprint
+together with a version number stored in an
+index object that takes the name of the original tarball.
+
+* Implementation
 The system consists of a Ceph Object Class ([[github]]), that implements
 reference counting and metadata storage for CAS objects, and a client
 library that adds chunking, recipes, and compression.
 
-*** Namespaces
+Source code documentation is available on Github Pages: [[https://irq0.github.io/veintidos/]]
+
+From bottom-up the Veintidos stack looks like this:
+
+- [[https://github.com/irq0/ceph/blob/wip-cas-cls/src/cls/cas/cls_cas.cc][Ceph Object Class]] - New CAS RADOS Operations (Run on OSD)
+- RADOS, librados, Python bindings
+- [[https://irq0.github.io/veintidos/veintidos/cas.html][cas.py]] - Python interface to CAS object class
+  - [[https://irq0.github.io/veintidos/veintidos/compressor.html][compressor.py]] - Compression for CAS class
+- [[https://irq0.github.io/veintidos/veintidos/chunk.html][chunk.py]] - Chunker abstraction (write_full, read_full) and static chunker
+  - [[https://irq0.github.io/veintidos/veintidos/fingerprint.html][fingerprint.py]] - Fingerprinting functions
+  - [[https://irq0.github.io/veintidos/veintidos/recipe.html][recipe.py]] - Read / write recipe objects
+- [[https://irq0.github.io/veintidos/veintidos.html][veintidos.py]] - CLI
+
+** API Outline
+- cas.put(data) -> fingerprint (refcount++)
+- cas.get(fingerprint) -> data
+- cas.up(fingerprint) -> (refcount++)
+- cas.down(fingerprint) ->  (refcount–)
+- cas.list() -> [[fingerprint, refcount], …]
+- cas.info() -> metadata
+
+- chunker.write_full(name, data) -> version (cas.put(data), cas.put(recipe))
+- chunker.read_full(name) -> data (cas.get(recipe), cas.get(data))
+- chunker.read(name, off, size) -> data
+- chunker.versions(name) -> [HEAD, …] chunker.remove_version(name, version)
+- chunker.remove_version(name, version)
+
+** CAS Pool
 [[./_img/veintidos_namespaces.png]]
 
-Veintidos uses two namespaces: (1) The /CAS/ namespace for data chunks, (2)
-/INDEX/ namespace to map filenames to recipe objects.
-With a recipe object a client can reassemble a file that consists of
-many chunks.
+Veintidos uses a single Ceph pool, but two distinct namespaces to
+avoid name collisions between content-defined names and user-defined names.
 
-CAS objects are identified by their fingerprint. Currently the SHA-256
-hash of the content.
-
-Index objects do not have regular data, but use an object map instead.
-Each key represents a version pointing to the fingerprint of a recipe.
+1. The /CAS/ namespace for data chunks and recipe objects. Names are
+   content defined
+2. /INDEX/ namespace for index objects that map filenames to recipe
+   objects. Names are user defined
 
 *** CAS Objects
-Use the fingerprint of their content as their name. The objects also
-store additional metadata for the compression and fingerprinting algorithm, and a
-reference count.
+- Store arbitrary data
+- Created using =cas.put= and named after the fingerprint of their content
+- Reference counted by the CAS Ceph object class
+- Store additional metadata for the compression and fingerprinting algorithm
 
-*** Recipes
+*** Recipe Objects
 [[./_img/veintidos_recipe.png]]
 
-Veintidos's chunker stores recipes as CAS objects after it has written
-all chunks. In the current implementation every chunk has a fixed
-size.
-
-By itself recipe objects don't store the original filename, they just
-describe how to reassemble a file from CAS objects.
-
-Recipes are stored as a list of extents. Each entry has the form
-(offset, length, fingerprint)
+- Store an encoded list of extents
+- Each extent has the form =(offset, length, fingerprint)=
+- Stored as CAS objects
+- Written after all chunks are successfully written
+- Do not store the name of the original file
 
 *** Index Objects
 [[./_img/veintidos_index_object.png]]
 
-To associate recipes with file names (or any other client side data
-unit) veintidos uses index objects. Each index object has a user
-defined name and uses object maps to map a version to the name of a
-recipe CAS object. Currently versions are UNIX timestamps.
+- Associate recipe objects with a filename and version
+- The version is a UNIX timestamp
+- Store version -> fingerprint mapping as an object map
 
-** API Outline
-- cas.put(daten) -> fingerprint (refcount++)
-- cas.get(fingerprint) -> daten
-- cas.up(fingerprint) -> (refcount++)
-- cas.down(fingerprint) ->  (refcount–)
-- cas.list() -> [[fingerprint, refcount], …]
-
-- chunker.write_full(name, daten) -> version (cas.put(daten), cas.put(recipe))
-- chunker.read_full(name) -> daten (cas.get(recipe), cas.get(daten))
-- chunker.read(name, off, size) -> daten
-- chunker.versions(name) -> [HEAD, …] chunker.remove_version(name, version)
-
-** Limitations
+* Limitations
 Since Veintidos is a prototype the implementation has some limitations:
 
 - Client-side code is written in Python
 - CAS PUT uses JSON
-  - Data is Base64 encoded
-  - Metadata is taken as is by the object class
-- CAS GET does not detect compressed objects and transparently
-  decompresses them.
+  - Data is Base64 encoded; Metadata is taken as is by the object
+    class
+  - A rewrite in C++ could leverage the Ceph encode/decoder, which is
+    unavailable in Python
 - CAS GET is implemented using regular RADOS operations
+  - Can't use Cephx to limit operations to CAS object class
 - CAS Chunker has no partial write support
+  - Can't partially update files
+- No structure sharing between recipes of the same file
+- Only static chunking
+  - Add dynamic chunker to increase dedup ratio
 - Recipes are implemented client side and not in an object class
+  - Possibly move =get_extents_in_range= to OSD to speed up operations
+    such as partial read/write
+
 * Usage
 The code contains both a library and a command line utility to write
 files to a CAS pool.
