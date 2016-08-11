@@ -289,7 +289,7 @@ class Chunker(object):
         return index_version_key
 
     # == OP: Write ==
-    def write_full(self, name, file_, length, offset):
+    def write(self, name, file_, length, offset):
         """
         Complex write, e.g partial write
         """
