@@ -1,6 +1,17 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-# ✓
+# UTF-8? ✓
+
+"""
+CAS / Chunker Unit Tests
+
+
+Classes under test:
+
+- CAS
+- Chunker
+
+"""
 
 from StringIO import StringIO
 
@@ -12,6 +23,11 @@ from veintidos.cas import CAS, Compressor
 from veintidos.chunk import Chunker
 
 from util import random_id, random_bytes, eq_buffer
+
+# = Setup / Teardown =
+
+# Use single RADOS connection for the module. Create new pool for tests
+# and delete it afterwards
 
 rados = None
 pool_name = None
@@ -39,7 +55,15 @@ def teardown_module():
     rados.delete_pool(pool_name)
 
 
+# = Tests =
+
+# == CAS Class ==
+
 def test_chunker_no_litter():
+    """
+    Test: Write and immediate remove should not leave any object behind
+    """
+
     cas = CAS(ioctx_cas)
     chunker = Chunker(cas, ioctx_index)
 
@@ -60,6 +84,9 @@ def test_chunker_no_litter():
 
 
 def test_cas_put_get():
+    """
+    Test: `get(put(x)) == x` with random buffer content
+    """
     cas = CAS(ioctx_cas)
 
     data_in = random_bytes(99)
@@ -69,6 +96,9 @@ def test_cas_put_get():
 
 
 def test_cas_put_deduplicatable_content():
+    """
+    Test: `get(put(x)) == x` with deduplicatable content (zeros)
+    """
     cas = CAS(ioctx_cas)
 
     data_in = "\x00" * (4 * 1024**2)
@@ -80,6 +110,9 @@ def test_cas_put_deduplicatable_content():
 
 
 def compressed_cas_put_get(cas):
+    """
+    Test Utility: `get(put(x)) == x` for given `cas` and x in `{random, 1s, 0s}`
+    """
     data_in = random_bytes(8*1024**2)
     obj_name = cas.put(data_in)
     eq_buffer(data_in, cas.get(obj_name, size=8*1024**2))
@@ -97,6 +130,9 @@ def compressed_cas_put_get(cas):
 
 
 def test_compressed_cas_put_get():
+    """
+    Test: `get(put(x)) == x` for all available compressors
+    """
     for compression in Compressor.supported():
         print compression
         cas = CAS(ioctx_cas, compression=compression)
@@ -104,6 +140,10 @@ def test_compressed_cas_put_get():
 
 
 def test_mixed_compression():
+    """
+    Test: Uncompressed put and compressed put afterwards
+    """
+
     # put something uncompressed and then put new objs with compression
 
     cas = CAS(ioctx_cas, compression="no")
@@ -119,7 +159,12 @@ def test_mixed_compression():
     eq_buffer(data_in, cas.get(obj_name, size=11*1024**2))
 
 
+# == Chunker Class ==
+
 def test_chunker_put_get_single():
+    """
+    Test: read(write(x)) = x for x filling only a single chunk
+    """
     cas = CAS(ioctx_cas)
     chunker = Chunker(cas, ioctx_index)
 
@@ -135,6 +180,9 @@ def test_chunker_put_get_single():
 
 
 def test_chunker_put_get_multiple():
+    """
+    Test: read(write(x)) = x for x spread over multiple chunks. Every chunk filled
+    """
     cas = CAS(ioctx_cas)
     chunker = Chunker(cas, ioctx_index)
 
@@ -150,6 +198,9 @@ def test_chunker_put_get_multiple():
 
 
 def test_chunker_put_get_multiple_fraction():
+    """
+    Test: read(write(x)) = x for x spread over multiple chunks. With partially filled chunks
+    """
     cas = CAS(ioctx_cas)
     chunker = Chunker(cas, ioctx_index)
 
@@ -165,6 +216,9 @@ def test_chunker_put_get_multiple_fraction():
 
 
 def test_chunker_versions():
+    """
+    Test: versions / head_version returns version of last write_full. Single write_full
+    """
     cas = CAS(ioctx_cas)
     chunker = Chunker(cas, ioctx_index)
 
@@ -180,6 +234,9 @@ def test_chunker_versions():
 
 
 def test_chunker_multiple_versions():
+    """
+    Test: versions / head_version return version of last write_full. Multiple write_full
+    """
     cas = CAS(ioctx_cas)
     chunker = Chunker(cas, ioctx_index)
 
@@ -201,6 +258,13 @@ def test_chunker_multiple_versions():
 
 
 def test_chunker_remove():
+    """
+    Test: remove actually removes
+
+    - `remove_version(write_full)`: No versions, but index object
+    - `write_full, write_full, remove_all_versions`: Index object gone
+    """
+
     cas = CAS(ioctx_cas)
     chunker = Chunker(cas, ioctx_index)
 
@@ -210,18 +274,19 @@ def test_chunker_remove():
     version = chunker.write_full(obj_name, StringIO(data_in))
     chunker.remove_version(obj_name, version)
 
-    # object gone
     eq(chunker.head_version(obj_name), None)
 
     chunker.write_full(obj_name, StringIO(data_in))
     chunker.write_full(obj_name, StringIO(data_in))
     chunker.remove_all_versions(obj_name)
 
-    # object gone
     assert_raises(ObjectNotFound, chunker.head_version, obj_name)
 
 
 def test_chunker_partial_read():
+    """
+    Test: partial reads using chunker.read with different input and weird extents
+    """
     cas = CAS(ioctx_cas)
     chunker = Chunker(cas, ioctx_index)
 
@@ -241,6 +306,10 @@ def test_chunker_partial_read():
 
 
 def test_chunker_partial_read_past_size():
+    """
+    Test: partial reads past *file* size
+    """
+
     cas = CAS(ioctx_cas)
     chunker = Chunker(cas, ioctx_index)
 

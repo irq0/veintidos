@@ -1,9 +1,11 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-# ✓
+# UTF-8? ✓
 
 import logging
 import msgpack
+
+# = Utility Functions =
 
 def get_extents_in_range(recipe, length, offset):
     """
@@ -25,16 +27,35 @@ def get_extents_in_range(recipe, length, offset):
     return result
 
 
+# = Recipe Classes =
+
+# == Recipe Interface Class ==
+
 class Recipe(object):
+    # === Pack / Unpack ===
+
     def __init__(self, fps):
+        """
+        Initialize recipe from fingerprint extent list.
+
+        Expected format: `(offset, length, fingerprint)`
+        """
         pass
 
     def pack(self):
+        """
+        Return packed recipe data
+        """
         raise NotImplementedError()
 
     @staticmethod
     def unpack(data):
+        """
+        Unpack recipe data into Recipe object
+        """
         raise NotImplementedError()
+
+    # === Iterator Methods ===
 
     def __iter__(self):
         raise NotImplementedError()
@@ -43,19 +64,36 @@ class Recipe(object):
         raise NotImplementedError()
 
 
+# == Simple Recipe ==
+
 class SimpleRecipe(Recipe):
+    """
+    Simple msgpack-based recipe
+
+    Packs fingerprints + small header
+    """
+
     version = 0
     fps = []
     log = logging.getLogger("SimpleRecipe")
 
+    # === Init ===
+
     def __init__(self, fps):
         self.fps = fps
+
+    # === Utility Methods ===
 
     def get_size(self):
         off, length, _ = self.fps[-1]
         return off + length
 
     def make_header(self):
+        """
+        Make header for msgpack recipe
+
+        Currently only add a version number
+        """
         return (self.version,)
 
     def __iter__(self):
@@ -65,10 +103,15 @@ class SimpleRecipe(Recipe):
         return len(self.fps)
 
     def extents_in_range(self, length, offset):
+        """Class version of `get_extents_in_range`"""
         return get_extents_in_range(self.fps, length, offset)
+
+    # === Pack ===
 
     def pack(self):
         return msgpack.packb((self.make_header(), self.fps))
+
+    # === Unpack ===
 
     @staticmethod
     def unpack(data):
@@ -77,6 +120,8 @@ class SimpleRecipe(Recipe):
             header, fps = msgpack.unpackb(data, use_list=False)
 
         except msgpack.ExtraData, e:
+            # If msgpack finds more data whan it expects, almost
+            # certainly means that the object is damaged
             log = logging.getLogger("SimpleRecipe")
             log.exception("Recipe unpack error")
             log.debug("Extra Data: %r", e.extra)

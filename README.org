@@ -73,7 +73,7 @@ recipe CAS object. Currently versions are UNIX timestamps.
 - chunker.versions(name) -> [HEAD, …] chunker.remove_version(name, version)
 
 ** Limitations
-Since veintidos is a prototype the implementation has some limitations:
+Since Veintidos is a prototype the implementation has some limitations:
 
 - Client-side code is written in Python
 - CAS PUT uses JSON

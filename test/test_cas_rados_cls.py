@@ -1,6 +1,17 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-# ✓
+# UTF-8? ✓
+
+
+"""
+CAS RADOS Object Class Tests
+
+This tests the object class CAS loaded into the Ceph cluster's OSDs
+directly without using the CAS Python Class. Tests various error conditions
+of the CAS object class
+
+"""
+
 
 import base64
 import binascii
@@ -10,6 +21,12 @@ from nose.tools import eq_ as eq, assert_raises
 from rados import Error, Rados
 
 from util import random_fp, random_bytes, random_id
+
+# = Setup / Teardown =
+
+# Use single RADOS connection for the module. Create new pool for tests
+# and delete it afterwards
+
 
 rados = None
 pool_name = None
@@ -34,7 +51,12 @@ def teardown_module():
     rados.delete_pool(pool_name)
 
 
+# = Tests =
+
 def test_put_correct():
+    """
+    Test: Regular CAS PUT
+    """
     fp = random_fp()
     data = random_bytes(100)
 
@@ -57,6 +79,9 @@ def test_put_correct():
 
 
 def test_put_broken():
+    """
+    Test: Error returns of broken CAS PUTs
+    """
     fp = random_fp()
     data = random_bytes(100)
 
@@ -81,6 +106,9 @@ def test_put_broken():
 
 
 def test_up_down():
+    """
+    Test: UP/DOWN, check refcounts
+    """
     fp = random_fp()
     data = random_bytes(100)
 

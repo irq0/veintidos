@@ -1,20 +1,28 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-# ✓
+# UTF-8? ✓
+
+"""
+Recipe Tests
+
+Classes under test:
+
+- SimpleRecipe
+
+"""
 
 from nose.tools import eq_ as eq
-from util import random_fp
+from util import make_test_fps
 
 from veintidos.recipe import SimpleRecipe
 
 
-def make_test_fps(n=42):
-    chunk_size = 4*1024**2
-    return [(i*chunk_size, chunk_size, random_fp())
-            for i in range(n)]
-
+# = Tests =
 
 def test_SimpleRecipeMaker():
+    """
+    Test: SimpleRecipeMaker: pack/unpack of recipes of differnet size
+    """
     fps_in = make_test_fps()
 
     r = SimpleRecipe(fps_in)
