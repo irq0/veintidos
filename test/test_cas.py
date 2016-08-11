@@ -160,6 +160,10 @@ def test_mixed_compression():
 
     eq_buffer(data_in, cas.get(obj_name, size=11*1024**2))
 
+    info = cas.info(obj_name)
+    eq("no", info["cas.meta.compression"])
+    eq(len(Compressor.supported()) + 1, info["cas.refcount"])
+
 
 # == Chunker Class ==
 
