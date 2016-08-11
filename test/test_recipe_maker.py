@@ -12,7 +12,7 @@ Classes under test:
 """
 
 from nose.tools import eq_ as eq
-from util import make_test_fps
+from util import make_fps
 
 from veintidos.recipe import SimpleRecipe
 
@@ -23,7 +23,7 @@ def test_SimpleRecipeMaker():
     """
     Test: SimpleRecipeMaker: pack/unpack of recipes of differnet size
     """
-    fps_in = make_test_fps()
+    fps_in = make_fps()
 
     r = SimpleRecipe(fps_in)
     data = r.pack()
@@ -31,7 +31,7 @@ def test_SimpleRecipeMaker():
 
     eq(fps_in, list(fps_out))
 
-    fps_in = make_test_fps(1000000)
+    fps_in = make_fps(1000000)
 
     r = SimpleRecipe(fps_in)
     data = r.pack()

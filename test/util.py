@@ -47,7 +47,7 @@ def eq_file(x, y):
 
 
 # === Generate Recipes ===
-def make_test_fps(n=42):
+def make_fps(n=42):
     chunk_size = 4*1024**2
     return [(i*chunk_size, chunk_size, random_fp())
             for i in range(n)]
