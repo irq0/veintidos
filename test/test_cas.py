@@ -24,7 +24,7 @@ from veintidos.chunk import Chunker
 
 from util import random_id, random_bytes, eq_buffer
 
-# = Setup / Teardown =
+# = Setup / Tear Down =
 
 # Use single RADOS connection for the module. Create new pool for tests
 # and delete it afterwards
@@ -141,10 +141,12 @@ def test_compressed_cas_put_get():
 
 def test_mixed_compression():
     """
-    Test: Uncompressed put and compressed put afterwards
+    Test: Uncompressed put and compressed put afterwards does not change object
+    except reference counter
     """
 
-    # put something uncompressed and then put new objs with compression
+    # Put uncompressed data and then put new objects with compression turned on
+    # CAS must not create new objects, but rather increment their reference counter
 
     cas = CAS(ioctx_cas, compression="no")
     data_in = "\xFF" * 11*1024**2

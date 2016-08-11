@@ -22,7 +22,7 @@ from rados import Error, Rados
 
 from util import random_fp, random_bytes, random_id
 
-# = Setup / Teardown =
+# = Setup / Tear Down =
 
 # Use single RADOS connection for the module. Create new pool for tests
 # and delete it afterwards
@@ -107,7 +107,7 @@ def test_put_broken():
 
 def test_up_down():
     """
-    Test: UP/DOWN, check refcounts
+    Test: UP/DOWN, check reference counts
     """
     fp = random_fp()
     data = random_bytes(100)

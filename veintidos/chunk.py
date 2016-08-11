@@ -6,7 +6,7 @@
 Chunk abstraction for CAS pools
 
 Supports writing arbitrary long *files* as a series of CAS objects
-Also creats metadata to reassemble the *file* later
+Also creates metadata to reassemble the *file* later
 
 The Chunker provides a high-level API similar to RADOS's Striper on top
 of CAS ([[cas.py]])
@@ -57,7 +57,7 @@ def make_index_version():
 # that are used depending on the type of file used:
 
 # - Regular files: Mmap-based chunker
-# - Everything else (like FIFOs): Fallback chunker that does sequencial reads
+# - Everything else (like FIFOs): Fallback chunker that does sequential reads
 
 def static_chunker(file_, chunk_size):
     """
@@ -149,8 +149,8 @@ class Chunker(object):
 
     - Write file in chunks to CAS namespace
     - Create recipe for chunks those chunks
-    - Add recipe entry to name's omap
-    - Return key of that omap entry (=version)
+    - Add recipe entry to `name`'s object map
+    - Return key of that object map entry (=version)
     """
 
     __version__ = "veintidos-chunker-0.1"

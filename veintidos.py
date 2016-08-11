@@ -130,6 +130,7 @@ def setup_logging(args):
                         "\n\t"
                         "%(message)s")
 
+
 def main():
     args = parse_cmdline()
     setup_logging(args)

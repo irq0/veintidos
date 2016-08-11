@@ -31,6 +31,7 @@ from fingerprint import fingerprint
 class CASError(Exception):
     pass
 
+
 # = CAS Class =
 
 class CAS(object):
@@ -39,7 +40,7 @@ class CAS(object):
     Wraps CAS Object Class methods `put`, `up`, and `down`.
 
     Adds fingerprinting (See: [[fingerprint.py]]), compression (See: [[compressor.py]]),
-    and convinience methods like `info` and `list`.
+    and convenience methods like `info` and `list`.
     """
 
     __version__ = "veintidos-cas-0.1"

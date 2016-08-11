@@ -5,6 +5,7 @@
 import logging
 import msgpack
 
+
 # = Utility Functions =
 
 def get_extents_in_range(recipe, length, offset):
@@ -120,7 +121,7 @@ class SimpleRecipe(Recipe):
             header, fps = msgpack.unpackb(data, use_list=False)
 
         except msgpack.ExtraData, e:
-            # If msgpack finds more data whan it expects, almost
+            # If msgpack finds more data when it expects, almost
             # certainly means that the object is damaged
             log = logging.getLogger("SimpleRecipe")
             log.exception("Recipe unpack error")
