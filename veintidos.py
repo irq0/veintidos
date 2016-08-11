@@ -1,6 +1,10 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-# ✓
+# UTF-8? ✓
+
+"""
+Veintidos Commandline Interface
+"""
 
 import logging
 import argparse
@@ -10,6 +14,10 @@ from rados import Rados, ObjectExists
 import veintidos.cas as cas
 from veintidos.chunk import Chunker
 from veintidos.cas import Compressor
+
+# = Setup Functions =
+
+# == RADOS and I/O Contexts ==
 
 RADOS = None
 CAS = None
@@ -47,6 +55,22 @@ def setup_rados(args):
         CHUNKER = Chunker(CAS, IOCTX_INDEX)
 
 
+# == Logger ==
+
+def setup_logging(args):
+    logging.basicConfig(level=args.loglevel,
+                        format=""
+                        "%(asctime)-15s %(levelname)-9s"
+                        "%(threadName)-12s %(name)-15s %(filename)s:%(lineno)s -> %(funcName)s():"
+                        "\n\t"
+                        "%(message)s")
+
+# = Commands =
+
+# Dispatched by main from commandline args
+
+# == ls ==
+
 def cmd_ls(args):
 
     if args.cas:
@@ -65,10 +89,14 @@ def cmd_ls(args):
             print obj, "→", ", ".join(CHUNKER.versions(obj))
 
 
+# == put ==
+
 def cmd_put(args):
     version = CHUNKER.write_full(args.name, args.file)
     print "Wrote {} version {}".format(args.name, version)
 
+
+# == rm ==
 
 def cmd_rm(args):
     if args.version == "ALL":
@@ -77,28 +105,31 @@ def cmd_rm(args):
         CHUNKER.remove_version(args.name, args.version)
 
 
+# == get ==
+
 def cmd_get(args):
     CHUNKER.read_full(args.name, args.file, args.version)
 
 
+# = Commandline Parser =
+
 def parse_cmdline():
+    # common
     parser = argparse.ArgumentParser(prog="veintidos client")
     parser.add_argument("--pool", type=str, default="veintidos", help="Ceph pool")
-    parser.add_argument("--debug", action="store_const", dest="loglevel",
-                        const=logging.DEBUG)
-    parser.add_argument("--verbose", action="store_const", dest="loglevel",
-                        const=logging.INFO)
+    parser.add_argument("--debug", action="store_const", dest="loglevel", const=logging.DEBUG)
+    parser.add_argument("--verbose", action="store_const", dest="loglevel", const=logging.INFO)
 
     subparsers = parser.add_subparsers()
 
-    ls_parser = subparsers.add_parser(
-        "ls", help="List CAS and INDEX objects")
+    # ls
+    ls_parser = subparsers.add_parser("ls", help="List CAS and INDEX objects")
     ls_parser.add_argument('--no-index', action="store_false", dest="index")
     ls_parser.add_argument('--no-cas', action="store_false", dest="cas")
     ls_parser.set_defaults(func=cmd_ls)
 
-    put_parser = subparsers.add_parser(
-        "put", help="Store file to CAS pool and write INDEX")
+    # put
+    put_parser = subparsers.add_parser("put", help="Store file to CAS pool and write INDEX")
     put_parser.add_argument("--compression", default="snappy", choices=Compressor.supported(),
                             help="Select compression algorithm for _new_ objects")
     put_parser.add_argument("--chunk-size", type=int, default=(4 * 1024**2), help="Size of chunks in byte")
@@ -106,14 +137,14 @@ def parse_cmdline():
     put_parser.add_argument('file', type=argparse.FileType('rb'))
     put_parser.set_defaults(func=cmd_put)
 
-    rm_parser = subparsers.add_parser(
-        "rm", help="Remove file")
+    # rm
+    rm_parser = subparsers.add_parser("rm", help="Remove file")
     rm_parser.add_argument('name', type=str)
     rm_parser.add_argument('--version', type=str, default="ALL")
     rm_parser.set_defaults(func=cmd_rm)
 
-    get_parser = subparsers.add_parser(
-        "get", help="Retrieve file from CAS pool")
+    # get
+    get_parser = subparsers.add_parser("get", help="Retrieve file from CAS pool")
     get_parser.add_argument('name', type=str)
     get_parser.add_argument('file', type=argparse.FileType('w+b'))
     get_parser.add_argument('--version', type=str, default="HEAD")
@@ -122,14 +153,7 @@ def parse_cmdline():
     return parser.parse_args()
 
 
-def setup_logging(args):
-    logging.basicConfig(level=args.loglevel,
-                        format=""
-                        "%(asctime)-15s %(levelname)-9s"
-                        "%(threadName)-12s %(name)-15s %(filename)s:%(lineno)s -> %(funcName)s():"
-                        "\n\t"
-                        "%(message)s")
-
+# = Main =
 
 def main():
     args = parse_cmdline()
