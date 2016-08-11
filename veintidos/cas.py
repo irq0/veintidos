@@ -18,6 +18,7 @@ import rados
 def fingerprint(data):
     h = hashlib.sha256()
     h.update(data)
+from compressor import Compressor
 
     return "SHA-256", h.hexdigest()
 
@@ -26,83 +27,7 @@ class CASError(Exception):
     pass
 
 
-class UnknownCompressor(Exception):
-    pass
-
-
-class Compressor(object):
     """
-    Compression / Decompression wrapper CAS <-> python
-    """
-
-    # identifies compression in object metadata
-    identifier = "no"
-
-    @staticmethod
-    def compress(data):
-        meta = {
-            "compression": "no",
-            "orig_size": len(data)
-        }
-        return meta, data
-
-    @staticmethod
-    def decompress(data):
-        return data
-
-    @staticmethod
-    def select(identifier):
-        for cls in Compressor.__subclasses__():
-            if cls.identifier == identifier:
-                return cls
-
-        if Compressor.identifier == identifier:
-            return Compressor
-
-        raise UnknownCompressor("Compressor unknown: " + identifier)
-
-    @staticmethod
-    def supported():
-        return [cls.identifier for cls in Compressor.__subclasses__()] + [Compressor.identifier]
-
-
-class SnappyCompressor(Compressor):
-    identifier = "snappy"
-
-    @staticmethod
-    def compress(data):
-        meta = {
-            "compression": "snappy",
-            "orig_size": len(data)
-        }
-
-        compressed_data = snappy.compress(data)
-        return meta, compressed_data
-
-    @staticmethod
-    def decompress(compressed_data):
-        data = snappy.uncompress(compressed_data)
-        return data
-
-
-class BZ2Compressor(Compressor):
-    identifier = "bz2"
-
-    @staticmethod
-    def compress(data):
-        meta = {
-            "compression": "bz2",
-            "orig_size": len(data),
-            "compresslevel": 9
-        }
-
-        compressed_data = bz2.compress(data, 9)
-        return meta, compressed_data
-
-    @staticmethod
-    def decompress(compressed_data):
-        data = bz2.decompress(compressed_data)
-        return data
 
 
 class CAS(object):
