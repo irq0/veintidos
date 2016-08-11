@@ -15,12 +15,9 @@ import snappy
 import rados
 
 
-def fingerprint(data):
-    h = hashlib.sha256()
-    h.update(data)
 from compressor import Compressor
+from fingerprint import fingerprint
 
-    return "SHA-256", h.hexdigest()
 
 
 class CASError(Exception):
