@@ -1,0 +1,1159 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta http-equiv="content-type" content="text/html;charset=utf-8">
+  <title>chunk.py</title>
+  <link rel="stylesheet" href="../pycco.css">
+</head>
+<body>
+<div id='container'>
+  <div id="background"></div>
+  <div class='section'>
+    <div class='docs'><h1>chunk.py</h1></div>
+  </div>
+  <div class='clearall'>
+  <div class='section' id='section-0'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-0'>#</a>
+      </div>
+      <p>UTF-8? ✓</p>
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-1'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-1'>#</a>
+      </div>
+      <p>Chunk abstraction for CAS pools</p>
+<p>Supports writing arbitrary long <em>files</em> as a series of CAS objects
+Also creates metadata to reassemble the <em>file</em> later</p>
+<p>The Chunker provides a high-level API similar to RADOS's Striper on top
+of CAS ( <a href="cas.html">cas.py</a>)</p>
+<p>Chunk generators chunk <em>files</em> into a sequence of <em>chunks</em> that a Chunker
+writes as CAS objects.</p>
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre><span class="kn">import</span> <span class="nn">time</span>
+<span class="kn">import</span> <span class="nn">logging</span>
+<span class="kn">import</span> <span class="nn">threading</span>
+<span class="kn">import</span> <span class="nn">mmap</span>
+<span class="kn">import</span> <span class="nn">math</span>
+<span class="kn">import</span> <span class="nn">multiprocessing.dummy</span> <span class="kn">as</span> <span class="nn">multiprocessing</span>
+
+<span class="kn">from</span> <span class="nn">functools</span> <span class="kn">import</span> <span class="n">partial</span>
+
+<span class="kn">import</span> <span class="nn">recipe</span></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-2'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-2'>#</a>
+      </div>
+      <h1><span id="configuration" href="configuration"> Configuration </span></h1>
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-3'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-3'>#</a>
+      </div>
+      <p>Fallback chunker: Maximum outstanding objects in memory</p>
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre><span class="n">CHUNKER_MAX_OUTSTANDING</span> <span class="o">=</span> <span class="mi">100</span>  <span class="c"># * 4MB</span></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-4'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-4'>#</a>
+      </div>
+      <p>Maximum threads running cas.put</p>
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre><span class="n">WRITER_MAX_THREADS</span> <span class="o">=</span> <span class="mi">8</span></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-5'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-5'>#</a>
+      </div>
+      <p>Chunks per cas.put thread</p>
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre><span class="n">WRITER_THREAD_CHUNKSIZE</span> <span class="o">=</span> <span class="mi">16</span></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-6'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-6'>#</a>
+      </div>
+      <h1><span id="utility-functions" href="utility-functions"> Utility Functions </span></h1>
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-7'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-7'>#</a>
+      </div>
+      <p>Make version number for index object enties</p>
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre><span class="k">def</span> <span class="nf">make_index_version</span><span class="p">():</span></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-8'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-8'>#</a>
+      </div>
+      
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre>    <span class="k">return</span> <span class="nb">int</span><span class="p">(</span><span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">()</span><span class="o">*</span><span class="mi">1000</span><span class="p">)</span></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-9'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-9'>#</a>
+      </div>
+      <h1><span id="chunk-generators" href="chunk-generators"> Chunk Generators </span></h1>
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-10'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-10'>#</a>
+      </div>
+      <p>Chunk generators return a generator of chunks from an input file.
+The generator returns <code>(start, size, chunk_function)</code> tuples.
+The <code>chunk_function</code> returns the chunk <code>(start, size)</code>
+A chunk is only read when invoking the <code>chunk_function</code></p>
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-11'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-11'>#</a>
+      </div>
+      <h2><span id="static-chunker" href="static-chunker"> Static Chunker </span></h2>
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-12'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-12'>#</a>
+      </div>
+      <p>The static chunker uses a fixed chunk size. It has two internal implementations,
+that are used depending on the type of file used:</p>
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-13'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-13'>#</a>
+      </div>
+      <ul>
+<li>Regular files: Mmap-based chunker</li>
+<li>Everything else (like FIFOs): Fallback chunker that does sequential reads</li>
+</ul>
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-14'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-14'>#</a>
+      </div>
+      <p>Return generator with static chunked extents + data
+for file_</p>
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre><span class="k">def</span> <span class="nf">static_chunker</span><span class="p">(</span><span class="n">file_</span><span class="p">,</span> <span class="n">chunk_size</span><span class="p">):</span></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-15'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-15'>#</a>
+      </div>
+      
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre>    <span class="n">log</span> <span class="o">=</span> <span class="n">logging</span><span class="o">.</span><span class="n">getLogger</span><span class="p">(</span><span class="s">&quot;static_chunker&quot;</span><span class="p">)</span></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-16'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-16'>#</a>
+      </div>
+      <p>Chunker for files</p>
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre>    <span class="k">def</span> <span class="nf">mmap_chunker</span><span class="p">():</span></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-17'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-17'>#</a>
+      </div>
+      
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre>        <span class="n">log</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s">&quot;Using mmap chunker&quot;</span><span class="p">)</span>
+        <span class="n">chunks</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">math</span><span class="o">.</span><span class="n">ceil</span><span class="p">(</span><span class="nb">float</span><span class="p">((</span><span class="nb">len</span><span class="p">(</span><span class="n">mm</span><span class="p">))</span> <span class="o">/</span> <span class="nb">float</span><span class="p">(</span><span class="n">chunk_size</span><span class="p">))))</span>
+        <span class="n">log</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="s">&quot;mmap file: size=</span><span class="si">%s</span><span class="s">, chunks=</span><span class="si">%s</span><span class="s">&quot;</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">mm</span><span class="p">),</span> <span class="n">chunks</span><span class="p">)</span>
+
+        <span class="n">size</span> <span class="o">=</span> <span class="n">chunk_size</span>
+        <span class="n">rest</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">mm</span><span class="p">)</span>
+        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">mm</span><span class="p">)</span> <span class="o">&lt;</span> <span class="n">chunk_size</span><span class="p">:</span>
+            <span class="n">size</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">mm</span><span class="p">)</span>
+
+        <span class="k">for</span> <span class="n">chunk_num</span> <span class="ow">in</span> <span class="nb">xrange</span><span class="p">(</span><span class="n">chunks</span><span class="p">):</span>
+            <span class="n">start</span> <span class="o">=</span> <span class="n">chunk_num</span> <span class="o">*</span> <span class="n">chunk_size</span>
+
+            <span class="k">yield</span> <span class="p">(</span><span class="n">start</span><span class="p">,</span>
+                   <span class="n">size</span><span class="p">,</span>
+                   <span class="k">lambda</span> <span class="n">s</span><span class="o">=</span><span class="n">start</span><span class="p">:</span> <span class="n">mm</span><span class="p">[</span><span class="n">s</span><span class="p">:</span><span class="n">s</span><span class="o">+</span><span class="n">chunk_size</span><span class="p">])</span>
+
+            <span class="n">rest</span> <span class="o">-=</span> <span class="n">size</span>
+            <span class="n">size</span> <span class="o">=</span> <span class="nb">min</span><span class="p">(</span><span class="n">rest</span><span class="p">,</span> <span class="n">chunk_size</span><span class="p">)</span></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-18'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-18'>#</a>
+      </div>
+      <p>can't close the mmap here since mm regions may still be accessed
+using the chunk function above
+       mm.close()</p>
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-19'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-19'>#</a>
+      </div>
+      <p>Chunker for anything not supporting mmap like streams</p>
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre>    <span class="k">def</span> <span class="nf">fallback_chunker</span><span class="p">():</span></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-20'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-20'>#</a>
+      </div>
+      
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre>        <span class="n">log</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="s">&quot;Using fallback chunker&quot;</span><span class="p">)</span>
+        <span class="n">log</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="s">&quot;Fallback chunker settings: max_outstanding=</span><span class="si">%s</span><span class="s">&quot;</span><span class="p">,</span>
+                  <span class="n">CHUNKER_MAX_OUTSTANDING</span><span class="p">)</span>
+
+        <span class="n">chunk_num</span> <span class="o">=</span> <span class="mi">0</span>
+        <span class="n">outstanding</span> <span class="o">=</span> <span class="n">threading</span><span class="o">.</span><span class="n">BoundedSemaphore</span><span class="p">(</span><span class="n">value</span><span class="o">=</span><span class="n">CHUNKER_MAX_OUTSTANDING</span><span class="p">)</span></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-21'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-21'>#</a>
+      </div>
+      
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre>        <span class="k">def</span> <span class="nf">make_chunk_func</span><span class="p">(</span><span class="n">chunk</span><span class="p">):</span></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-22'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-22'>#</a>
+      </div>
+      
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre>            <span class="k">def</span> <span class="nf">chunk_func</span><span class="p">():</span>
+                <span class="n">log</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="s">&quot;Realizing chunk: len=</span><span class="si">%s</span><span class="s">&quot;</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">chunk</span><span class="p">))</span>
+                <span class="n">outstanding</span><span class="o">.</span><span class="n">release</span><span class="p">()</span>
+                <span class="k">return</span> <span class="n">chunk</span>
+            <span class="k">return</span> <span class="n">chunk_func</span>
+
+        <span class="n">start</span> <span class="o">=</span> <span class="mi">0</span>
+        <span class="k">while</span> <span class="bp">True</span><span class="p">:</span>
+            <span class="n">outstanding</span><span class="o">.</span><span class="n">acquire</span><span class="p">()</span>
+
+            <span class="n">chunk</span> <span class="o">=</span> <span class="n">file_</span><span class="o">.</span><span class="n">read</span><span class="p">(</span><span class="n">chunk_size</span><span class="p">)</span>
+            <span class="n">size</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">chunk</span><span class="p">)</span>
+            <span class="n">log</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="s">&quot;Read chunk: start=</span><span class="si">%s</span><span class="s">, num=</span><span class="si">%s</span><span class="s">, size=</span><span class="si">%s</span><span class="s">&quot;</span><span class="p">,</span>
+                      <span class="n">start</span><span class="p">,</span> <span class="n">chunk_num</span><span class="p">,</span> <span class="n">size</span><span class="p">)</span>
+
+            <span class="k">if</span> <span class="n">chunk</span><span class="p">:</span>
+                <span class="k">yield</span> <span class="p">(</span><span class="n">start</span><span class="p">,</span>
+                       <span class="n">size</span><span class="p">,</span>
+                       <span class="n">make_chunk_func</span><span class="p">(</span><span class="n">chunk</span><span class="p">))</span>
+
+                <span class="n">chunk_num</span> <span class="o">+=</span> <span class="mi">1</span>
+                <span class="k">if</span> <span class="n">size</span> <span class="o">&lt;</span> <span class="n">chunk_size</span><span class="p">:</span>
+                    <span class="k">break</span>
+
+                <span class="n">start</span> <span class="o">=</span> <span class="n">chunk_num</span> <span class="o">*</span> <span class="n">chunk_size</span>
+            <span class="k">else</span><span class="p">:</span>
+                <span class="k">break</span>
+
+    <span class="k">try</span><span class="p">:</span>
+        <span class="n">mm</span> <span class="o">=</span> <span class="n">mmap</span><span class="o">.</span><span class="n">mmap</span><span class="p">(</span><span class="n">file_</span><span class="o">.</span><span class="n">fileno</span><span class="p">(),</span> <span class="mi">0</span><span class="p">,</span> <span class="n">mmap</span><span class="o">.</span><span class="n">MAP_SHARED</span><span class="p">,</span> <span class="n">mmap</span><span class="o">.</span><span class="n">PROT_READ</span><span class="p">)</span>
+        <span class="k">return</span> <span class="n">mmap_chunker</span><span class="p">()</span>
+    <span class="k">except</span><span class="p">:</span>
+        <span class="k">return</span> <span class="n">fallback_chunker</span><span class="p">()</span></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-23'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-23'>#</a>
+      </div>
+      <h1><span id="chunker-class" href="chunker-class"> Chunker Class </span></h1>
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-24'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-24'>#</a>
+      </div>
+      <p>Chunker: Ceph Striper replacement that uses CAS and recipes</p>
+<p>Idea:</p>
+<ul>
+<li>Write file in chunks to CAS namespace</li>
+<li>Create recipe for chunks those chunks</li>
+<li>Add recipe entry to <code>name</code>'s object map</li>
+<li>Return key of that object map entry (=version)</li>
+</ul>
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre><span class="k">class</span> <span class="nc">Chunker</span><span class="p">(</span><span class="nb">object</span><span class="p">):</span></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-25'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-25'>#</a>
+      </div>
+      
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre>    <span class="n">__version__</span> <span class="o">=</span> <span class="s">&quot;veintidos-chunker-0.1&quot;</span>
+
+    <span class="n">log</span> <span class="o">=</span> <span class="n">logging</span><span class="o">.</span><span class="n">getLogger</span><span class="p">(</span><span class="s">&quot;Chunker&quot;</span><span class="p">)</span>
+    <span class="n">cas_worker</span> <span class="o">=</span> <span class="bp">None</span></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-26'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-26'>#</a>
+      </div>
+      <h2><span id="init" href="init"> Init </span></h2>
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-27'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-27'>#</a>
+      </div>
+      <p>Initialize Chunker</p>
+<p>Arguments:</p>
+<ul>
+<li><code>index_io_ctx</code> RADOS I/O Context used to store index objects</li>
+<li><code>cas_obj</code> CAS Object. Must use a different RADOS I/O Context!</li>
+<li><code>chunk_size</code> Chunk size passed to the static chunker</li>
+</ul>
+<p>Caveats:</p>
+<ul>
+<li>Only static chunking. See  <a href="chunk.html#chunk-generators">chunk.py</a></li>
+<li>Only <code>SimpleRecipe</code> recipes. See  <a href="recipe.html#simple-recipe">recipe.py</a></li>
+</ul>
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre>    <span class="k">def</span> <span class="nf">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">cas_obj</span><span class="p">,</span> <span class="n">index_io_ctx</span><span class="p">,</span> <span class="n">chunk_size</span><span class="o">=</span><span class="p">(</span><span class="mi">4</span> <span class="o">*</span> <span class="mi">1024</span><span class="o">**</span><span class="mi">2</span><span class="p">)):</span></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-28'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-28'>#</a>
+      </div>
+      
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre>        <span class="bp">self</span><span class="o">.</span><span class="n">cas</span> <span class="o">=</span> <span class="n">cas_obj</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">recipe</span> <span class="o">=</span> <span class="n">recipe</span><span class="o">.</span><span class="n">SimpleRecipe</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">index_io_ctx</span> <span class="o">=</span> <span class="n">index_io_ctx</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">index_io_ctx</span><span class="o">.</span><span class="n">set_namespace</span><span class="p">(</span><span class="s">&quot;INDEX&quot;</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">chunk_size</span> <span class="o">=</span> <span class="n">chunk_size</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">chunker</span> <span class="o">=</span> <span class="n">partial</span><span class="p">(</span><span class="n">static_chunker</span><span class="p">,</span> <span class="n">chunk_size</span><span class="o">=</span><span class="n">chunk_size</span><span class="p">)</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">log</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="s">&quot;Chunker initialized: static chunks, length </span><span class="si">%d</span><span class="s"> byte&quot;</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">chunk_size</span><span class="p">)</span></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-29'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-29'>#</a>
+      </div>
+      <h2><span id="utility-methods" href="utility-methods"> Utility Methods </span></h2>
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-30'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-30'>#</a>
+      </div>
+      <h3><span id="writing-chunks" href="writing-chunks"> Writing Chunks </span></h3>
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-31'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-31'>#</a>
+      </div>
+      <p>Wrapper for <code>CAS.put</code> used by <code>_write_chunks</code></p>
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre>    <span class="k">def</span> <span class="nf">_cas_put_wrapper</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">args</span><span class="p">):</span></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-32'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-32'>#</a>
+      </div>
+      
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre>        <span class="n">off</span><span class="p">,</span> <span class="n">size</span><span class="p">,</span> <span class="n">chunk_func</span> <span class="o">=</span> <span class="n">args</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">log</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="s">&quot;Chunk writer worker [</span><span class="si">%s</span><span class="s">]: </span><span class="si">%s</span><span class="s">:</span><span class="si">%s</span><span class="s">&quot;</span><span class="p">,</span>
+                       <span class="n">threading</span><span class="o">.</span><span class="n">current_thread</span><span class="p">()</span><span class="o">.</span><span class="n">getName</span><span class="p">(),</span> <span class="n">off</span><span class="p">,</span> <span class="n">size</span><span class="p">)</span></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-33'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-33'>#</a>
+      </div>
+      <p>Retrieves chunk from file. The read happens <strong>now</strong></p>
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre>        <span class="n">chunk</span> <span class="o">=</span> <span class="n">chunk_func</span><span class="p">()</span></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-34'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-34'>#</a>
+      </div>
+      <p>This happens when the Chunk Generator is broken:</p>
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre>        <span class="k">assert</span> <span class="nb">len</span><span class="p">(</span><span class="n">chunk</span><span class="p">)</span> <span class="o">==</span> <span class="n">size</span><span class="p">,</span> \
+            <span class="s">&quot;extent.size != chunk size ({} vs. {})&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">size</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">chunk</span><span class="p">))</span>
+
+        <span class="k">return</span> <span class="p">(</span><span class="n">off</span><span class="p">,</span> <span class="n">size</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">cas</span><span class="o">.</span><span class="n">put</span><span class="p">(</span><span class="n">chunk</span><span class="p">))</span></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-35'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-35'>#</a>
+      </div>
+      <p>Write chunks generated by a Chunk Generator  <a href="chunk.html#chunk-generators">chunk.py</a>
+using <code>_cas_put_wrapper</code></p>
+<p>Input / Output:</p>
+<p><code>( (off, size, data) ) ↦ ( (off, size, fingerprint) )</code></p>
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre>    <span class="k">def</span> <span class="nf">_write_chunks</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">chunks</span><span class="p">):</span></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-36'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-36'>#</a>
+      </div>
+      
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre>        <span class="bp">self</span><span class="o">.</span><span class="n">log</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="s">&quot;Starting chunk writers&quot;</span><span class="p">)</span>
+        <span class="n">pool</span> <span class="o">=</span> <span class="n">multiprocessing</span><span class="o">.</span><span class="n">Pool</span><span class="p">(</span><span class="n">WRITER_MAX_THREADS</span><span class="p">)</span>
+
+        <span class="n">result</span> <span class="o">=</span> <span class="n">pool</span><span class="o">.</span><span class="n">imap</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_cas_put_wrapper</span><span class="p">,</span> <span class="n">chunks</span><span class="p">,</span> <span class="n">chunksize</span><span class="o">=</span><span class="n">WRITER_THREAD_CHUNKSIZE</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">log</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="s">&quot;Starting chunk writers: Finished. Waiting for execution&quot;</span><span class="p">)</span>
+
+        <span class="k">return</span> <span class="nb">list</span><span class="p">(</span><span class="n">result</span><span class="p">)</span></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-37'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-37'>#</a>
+      </div>
+      <h3><span id="index-objects" href="index-objects"> Index Objects </span></h3>
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-38'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-38'>#</a>
+      </div>
+      <p>Retrieve list of <code>(version, recipe fingerprint)</code> from index object</p>
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre>    <span class="k">def</span> <span class="nf">_versions_and_recipes</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="p">):</span></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-39'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-39'>#</a>
+      </div>
+      
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre>        <span class="n">r_op</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">index_io_ctx</span><span class="o">.</span><span class="n">create_read_op</span><span class="p">()</span>
+        <span class="n">vals</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">index_io_ctx</span><span class="o">.</span><span class="n">get_omap_vals</span><span class="p">(</span><span class="n">r_op</span><span class="p">,</span> <span class="s">&quot;&quot;</span><span class="p">,</span> <span class="s">&quot;&quot;</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">index_io_ctx</span><span class="o">.</span><span class="n">operate_read_op</span><span class="p">(</span><span class="n">r_op</span><span class="p">,</span> <span class="n">name</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">index_io_ctx</span><span class="o">.</span><span class="n">release_read_op</span><span class="p">(</span><span class="n">r_op</span><span class="p">)</span>
+
+        <span class="k">return</span> <span class="n">vals</span></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-40'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-40'>#</a>
+      </div>
+      <p>Get recipe object fingerprint from <code>name</code> and <code>version</code>.
+Also resolve special version string <code>HEAD</code></p>
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre>    <span class="k">def</span> <span class="nf">_resolve_recipe_obj_from_version</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="p">,</span> <span class="n">version</span><span class="p">):</span></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-41'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-41'>#</a>
+      </div>
+      
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre>        <span class="n">vs_and_rs</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_versions_and_recipes</span><span class="p">(</span><span class="n">name</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="ow">not</span> <span class="n">vs_and_rs</span><span class="p">:</span>
+            <span class="k">return</span> <span class="bp">None</span>
+
+        <span class="k">if</span> <span class="n">version</span> <span class="o">==</span> <span class="s">&quot;HEAD&quot;</span><span class="p">:</span>
+            <span class="k">return</span> <span class="nb">max</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_versions_and_recipes</span><span class="p">(</span><span class="n">name</span><span class="p">))</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="k">return</span> <span class="p">(</span><span class="n">version</span><span class="p">,</span> <span class="nb">dict</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_versions_and_recipes</span><span class="p">(</span><span class="n">name</span><span class="p">))[</span><span class="n">version</span><span class="p">])</span></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-42'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-42'>#</a>
+      </div>
+      <h2><span id="op:-write-full" href="op:-write-full"> OP: Write Full </span></h2>
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-43'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-43'>#</a>
+      </div>
+      <p>Write all data in <code>file_</code> to a CAS pool. Return version number</p>
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre>    <span class="k">def</span> <span class="nf">write_full</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="p">,</span> <span class="n">file_</span><span class="p">):</span></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-44'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-44'>#</a>
+      </div>
+      
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre>        <span class="bp">self</span><span class="o">.</span><span class="n">log</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="s">&quot;Writing data [</span><span class="si">%r</span><span class="s">]: </span><span class="si">%r</span><span class="s">&quot;</span><span class="p">,</span> <span class="n">name</span><span class="p">,</span> <span class="n">file_</span><span class="p">)</span></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-45'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-45'>#</a>
+      </div>
+      <p>Chunk, Write, Create Recipe</p>
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre>        <span class="n">chunks</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">chunker</span><span class="p">(</span><span class="n">file_</span><span class="p">)</span>
+        <span class="n">recipe</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">recipe</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_write_chunks</span><span class="p">(</span><span class="n">chunks</span><span class="p">))</span></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-46'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-46'>#</a>
+      </div>
+      <p>Save recipe</p>
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre>        <span class="n">recipe_obj_name</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">cas</span><span class="o">.</span><span class="n">put</span><span class="p">(</span><span class="n">recipe</span><span class="o">.</span><span class="n">pack</span><span class="p">())</span>
+        <span class="n">index_version_key</span> <span class="o">=</span> <span class="nb">str</span><span class="p">(</span><span class="n">make_index_version</span><span class="p">())</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">log</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="s">&quot;Saving recipe [</span><span class="si">%s</span><span class="s">]: </span><span class="si">%s</span><span class="s"> -&gt; </span><span class="si">%s</span><span class="s">&quot;</span><span class="p">,</span>
+                       <span class="n">name</span><span class="p">,</span> <span class="n">index_version_key</span><span class="p">,</span> <span class="n">recipe_obj_name</span><span class="p">)</span></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-47'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-47'>#</a>
+      </div>
+      <p>Add version entry to index object</p>
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre>        <span class="n">w_op</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">index_io_ctx</span><span class="o">.</span><span class="n">create_write_op</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">index_io_ctx</span><span class="o">.</span><span class="n">set_omap</span><span class="p">(</span><span class="n">w_op</span><span class="p">,</span> <span class="p">(</span><span class="n">index_version_key</span><span class="p">,),</span>
+                                   <span class="p">(</span><span class="n">recipe_obj_name</span><span class="p">,))</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">index_io_ctx</span><span class="o">.</span><span class="n">operate_write_op</span><span class="p">(</span><span class="n">w_op</span><span class="p">,</span> <span class="n">name</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">index_io_ctx</span><span class="o">.</span><span class="n">release_write_op</span><span class="p">(</span><span class="n">w_op</span><span class="p">)</span>
+
+        <span class="k">return</span> <span class="n">index_version_key</span></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-48'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-48'>#</a>
+      </div>
+      <h2><span id="op:-write" href="op:-write"> OP: Write </span></h2>
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre>    <span class="k">def</span> <span class="nf">write</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="p">,</span> <span class="n">file_</span><span class="p">,</span> <span class="n">length</span><span class="p">,</span> <span class="n">offset</span><span class="p">):</span></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-49'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-49'>#</a>
+      </div>
+      <p>Complex write, e.g partial write</p>
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre>        <span class="k">raise</span> <span class="ne">NotImplementedError</span><span class="p">(</span><span class="s">&quot;Sorry. Not supported&quot;</span><span class="p">)</span></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-50'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-50'>#</a>
+      </div>
+      <h2><span id="op:-versions" href="op:-versions"> OP: Versions </span></h2>
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre>    <span class="k">def</span> <span class="nf">versions</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="p">):</span></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-51'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-51'>#</a>
+      </div>
+      <p>Return list of <code>name</code>'s versions</p>
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre>        <span class="n">versions</span> <span class="o">=</span> <span class="p">[</span><span class="n">x</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">_versions_and_recipes</span><span class="p">(</span><span class="n">name</span><span class="p">)]</span>
+        <span class="k">return</span> <span class="n">versions</span></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-52'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-52'>#</a>
+      </div>
+      <h2><span id="op:-head-version" href="op:-head-version"> OP: Head Version </span></h2>
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre>    <span class="k">def</span> <span class="nf">head_version</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="p">):</span></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-53'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-53'>#</a>
+      </div>
+      <p>Return last version of <code>name</code></p>
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre>        <span class="n">versions</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">versions</span><span class="p">(</span><span class="n">name</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">versions</span><span class="p">:</span>
+            <span class="k">return</span> <span class="nb">max</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">versions</span><span class="p">(</span><span class="n">name</span><span class="p">))</span></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-54'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-54'>#</a>
+      </div>
+      <h2><span id="op:-read-full" href="op:-read-full"> OP: Read Full </span></h2>
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-55'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-55'>#</a>
+      </div>
+      <p>Read file <code>name</code> from CAS pool and write contents to <code>out_file</code>. Return bytes written to
+<code>out_file</code>.</p>
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre>    <span class="k">def</span> <span class="nf">read_full</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="p">,</span> <span class="n">out_file</span><span class="p">,</span> <span class="n">version</span><span class="o">=</span><span class="s">&quot;HEAD&quot;</span><span class="p">):</span></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-56'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-56'>#</a>
+      </div>
+      
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre>        <span class="n">version</span><span class="p">,</span> <span class="n">recipe_obj</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_resolve_recipe_obj_from_version</span><span class="p">(</span><span class="n">name</span><span class="p">,</span> <span class="n">version</span><span class="p">)</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">log</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="s">&quot;Reading version </span><span class="si">%r</span><span class="s"> of object </span><span class="si">%r</span><span class="s">&quot;</span><span class="p">,</span> <span class="n">version</span><span class="p">,</span> <span class="n">name</span><span class="p">)</span>
+
+        <span class="n">recipe</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">recipe</span><span class="o">.</span><span class="n">unpack</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">cas</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">recipe_obj</span><span class="p">,</span> <span class="n">size</span><span class="o">=</span><span class="mi">100</span><span class="o">*</span><span class="mi">1024</span><span class="o">**</span><span class="mi">2</span><span class="p">))</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">log</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="s">&quot;Retrieved recipe: </span><span class="si">%d</span><span class="s"> extents&quot;</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">recipe</span><span class="p">))</span></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-57'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-57'>#</a>
+      </div>
+      <p>There may be a discrepancy of retrieved vs. written, if the extents in the recipe
+refer to partial chunks.</p>
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre>        <span class="n">bytes_written</span> <span class="o">=</span> <span class="mi">0</span>
+        <span class="n">bytes_retrieved</span> <span class="o">=</span> <span class="mi">0</span>
+
+        <span class="k">for</span> <span class="n">off</span><span class="p">,</span> <span class="n">size</span><span class="p">,</span> <span class="n">fp</span> <span class="ow">in</span> <span class="n">recipe</span><span class="p">:</span>
+            <span class="n">chunk</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">cas</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">fp</span><span class="p">,</span> <span class="n">off</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">size</span><span class="o">=</span><span class="n">size</span><span class="p">)</span>
+
+            <span class="bp">self</span><span class="o">.</span><span class="n">log</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="s">&quot;Writing extent: </span><span class="si">%d</span><span class="s">:</span><span class="si">%d</span><span class="s"> (</span><span class="si">%d</span><span class="s">)&quot;</span><span class="p">,</span> <span class="n">off</span><span class="p">,</span> <span class="n">size</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">chunk</span><span class="p">))</span>
+
+            <span class="n">out_file</span><span class="o">.</span><span class="n">seek</span><span class="p">(</span><span class="n">off</span><span class="p">)</span>
+            <span class="n">out_file</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">chunk</span><span class="p">[:</span><span class="n">size</span><span class="p">])</span>
+
+            <span class="n">bytes_written</span> <span class="o">+=</span> <span class="n">size</span>
+            <span class="n">bytes_retrieved</span> <span class="o">+=</span> <span class="nb">len</span><span class="p">(</span><span class="n">chunk</span><span class="p">)</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">log</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="s">&quot;Wrote </span><span class="si">%d</span><span class="s"> bytes / Retrieved </span><span class="si">%d</span><span class="s"> bytes&quot;</span><span class="p">,</span>
+                       <span class="n">bytes_written</span><span class="p">,</span> <span class="n">bytes_retrieved</span><span class="p">)</span>
+        <span class="n">out_file</span><span class="o">.</span><span class="n">flush</span><span class="p">()</span>
+
+        <span class="k">return</span> <span class="n">bytes_written</span></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-58'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-58'>#</a>
+      </div>
+      <h2><span id="op:-read" href="op:-read"> OP: Read </span></h2>
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-59'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-59'>#</a>
+      </div>
+      <p>Complex Read OP, e.g partial read</p>
+<p>The complex part is handling extents with holes in between.</p>
+<p>The algorithm is not optimized and reassembles data in memory.
+Relies on <code>extents_in_range</code> ( <a href="recipe.html">recipe.py</a>) to efficiently return extents in
+<code>(offset:length)</code> range.</p>
+<p>Return <code>offset:length</code> part of chunked file <code>name</code></p>
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre>    <span class="k">def</span> <span class="nf">read</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="p">,</span> <span class="n">length</span><span class="p">,</span> <span class="n">offset</span><span class="p">,</span> <span class="n">version</span><span class="o">=</span><span class="s">&quot;HEAD&quot;</span><span class="p">):</span></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-60'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-60'>#</a>
+      </div>
+      
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre>        <span class="n">version</span><span class="p">,</span> <span class="n">recipe_obj</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_resolve_recipe_obj_from_version</span><span class="p">(</span>
+            <span class="n">name</span><span class="p">,</span> <span class="n">version</span><span class="p">)</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">log</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="s">&quot;Reading version </span><span class="si">%r</span><span class="s"> of object </span><span class="si">%r</span><span class="s">: </span><span class="si">%d</span><span class="s">:</span><span class="si">%d</span><span class="s">&quot;</span><span class="p">,</span> <span class="n">version</span><span class="p">,</span> <span class="n">name</span><span class="p">,</span> <span class="n">offset</span><span class="p">,</span> <span class="n">length</span><span class="p">)</span></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-61'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-61'>#</a>
+      </div>
+      <p>Retrieve recipe</p>
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre>        <span class="n">recipe</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">recipe</span><span class="o">.</span><span class="n">unpack</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">cas</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">recipe_obj</span><span class="p">))</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">log</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="s">&quot;Retrieved recipe: </span><span class="si">%d</span><span class="s"> extents&quot;</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">recipe</span><span class="p">))</span></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-62'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-62'>#</a>
+      </div>
+      <p>Filter recipe for extents in requested range</p>
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre>        <span class="n">extents</span> <span class="o">=</span> <span class="n">recipe</span><span class="o">.</span><span class="n">extents_in_range</span><span class="p">(</span><span class="n">length</span><span class="p">,</span> <span class="n">offset</span><span class="p">)</span>
+
+        <span class="n">bufs</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="n">orig_offset</span> <span class="o">=</span> <span class="n">offset</span>
+        <span class="n">end</span> <span class="o">=</span> <span class="nb">min</span><span class="p">(</span><span class="n">offset</span><span class="o">+</span><span class="n">length</span><span class="p">,</span> <span class="n">recipe</span><span class="o">.</span><span class="n">get_size</span><span class="p">())</span></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-63'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-63'>#</a>
+      </div>
+      <p>Two-phase algorithm to reassemble part of <em>file</em></p>
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-64'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-64'>#</a>
+      </div>
+      <ol>
+<li>Get (partial) chunks from CAS pool</li>
+<li>Concatenate (partial) chunks and zero-fill gaps</li>
+</ol>
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-65'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-65'>#</a>
+      </div>
+      <p>Phase 1: Get (partial) chunks from CAS pool</p>
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre>        <span class="k">for</span> <span class="n">extent_offset</span><span class="p">,</span> <span class="n">extent_length</span><span class="p">,</span> <span class="n">fp</span> <span class="ow">in</span> <span class="n">extents</span><span class="p">:</span>
+            <span class="n">local_offset</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="n">offset</span><span class="p">,</span> <span class="n">extent_offset</span><span class="p">)</span>
+            <span class="n">extent_end</span> <span class="o">=</span> <span class="n">extent_length</span> <span class="o">+</span> <span class="n">extent_offset</span>
+
+            <span class="n">chunk_offset</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="n">offset</span><span class="o">-</span><span class="n">extent_offset</span><span class="p">,</span> <span class="mi">0</span><span class="p">)</span>
+            <span class="n">chunk_length</span> <span class="o">=</span> <span class="nb">min</span><span class="p">(</span><span class="n">end</span><span class="o">-</span><span class="n">local_offset</span><span class="p">,</span> <span class="n">extent_end</span><span class="o">-</span><span class="n">local_offset</span><span class="p">)</span>
+
+            <span class="n">chunk</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">cas</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">fp</span><span class="p">,</span> <span class="n">off</span><span class="o">=</span><span class="n">chunk_offset</span><span class="p">,</span>
+                                 <span class="n">size</span><span class="o">=</span><span class="n">chunk_length</span><span class="p">)</span>
+
+            <span class="n">bufs</span><span class="o">.</span><span class="n">append</span><span class="p">((</span><span class="n">offset</span><span class="p">,</span> <span class="n">chunk</span><span class="p">[:</span><span class="n">chunk_length</span><span class="p">]))</span>
+
+            <span class="n">offset</span> <span class="o">+=</span> <span class="n">chunk_length</span></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-66'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-66'>#</a>
+      </div>
+      <p>Phase 2: Concatenate (partial) chunks and zero-fill gaps</p>
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre>        <span class="n">result</span> <span class="o">=</span> <span class="s">&quot;&quot;</span>
+        <span class="n">offset</span> <span class="o">=</span> <span class="n">orig_offset</span>
+        <span class="n">first_off</span><span class="p">,</span> <span class="n">_</span> <span class="o">=</span> <span class="n">bufs</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">log</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="s">&quot;Reconstructing file from the following chunks: </span><span class="si">%r</span><span class="s">&quot;</span><span class="p">,</span>
+                       <span class="p">[(</span><span class="n">off</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">buf</span><span class="p">))</span> <span class="k">for</span> <span class="n">off</span><span class="p">,</span> <span class="n">buf</span> <span class="ow">in</span> <span class="n">bufs</span><span class="p">])</span>
+
+        <span class="k">if</span> <span class="n">offset</span> <span class="o">&lt;</span> <span class="n">first_off</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">log</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="s">&quot;Zero fill: </span><span class="si">%d</span><span class="s">:</span><span class="si">%d</span><span class="s">&quot;</span><span class="p">,</span> <span class="n">offset</span><span class="p">,</span> <span class="p">(</span><span class="n">first_off</span> <span class="o">-</span> <span class="n">offset</span><span class="p">))</span>
+            <span class="n">result</span> <span class="o">+=</span> <span class="s">&quot;</span><span class="se">\x00</span><span class="s">&quot;</span> <span class="o">*</span> <span class="p">(</span><span class="n">first_off</span> <span class="o">-</span> <span class="n">offset</span><span class="p">)</span>
+            <span class="n">offset</span> <span class="o">=</span> <span class="n">first_off</span>
+
+        <span class="k">for</span> <span class="n">current</span><span class="p">,</span> <span class="nb">next</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="n">bufs</span><span class="p">,</span> <span class="n">bufs</span><span class="p">[</span><span class="mi">1</span><span class="p">:]):</span>
+            <span class="n">c_off</span><span class="p">,</span> <span class="n">c_buf</span> <span class="o">=</span> <span class="n">current</span>
+            <span class="n">c_end</span> <span class="o">=</span> <span class="p">(</span><span class="n">c_off</span> <span class="o">+</span> <span class="nb">len</span><span class="p">(</span><span class="n">c_buf</span><span class="p">))</span>
+            <span class="n">n_off</span><span class="p">,</span> <span class="n">n_buf</span> <span class="o">=</span> <span class="nb">next</span>
+
+            <span class="bp">self</span><span class="o">.</span><span class="n">log</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="s">&quot;Chunk fill: </span><span class="si">%d</span><span class="s">:</span><span class="si">%d</span><span class="s">&quot;</span><span class="p">,</span> <span class="n">offset</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">c_buf</span><span class="p">))</span>
+            <span class="n">result</span> <span class="o">+=</span> <span class="n">c_buf</span>
+            <span class="n">offset</span> <span class="o">+=</span> <span class="nb">len</span><span class="p">(</span><span class="n">c_buf</span><span class="p">)</span>
+
+            <span class="k">if</span> <span class="n">c_end</span> <span class="o">&lt;</span> <span class="n">n_off</span><span class="p">:</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">log</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="s">&quot;Zero fill: </span><span class="si">%d</span><span class="s">:</span><span class="si">%d</span><span class="s">&quot;</span><span class="p">,</span> <span class="n">offset</span><span class="p">,</span> <span class="p">(</span><span class="n">n_off</span> <span class="o">-</span> <span class="n">c_end</span><span class="p">))</span>
+                <span class="n">result</span> <span class="o">+=</span> <span class="s">&quot;</span><span class="se">\x00</span><span class="s">&quot;</span> <span class="o">*</span> <span class="p">(</span><span class="n">n_off</span> <span class="o">-</span> <span class="n">c_end</span><span class="p">)</span>
+
+        <span class="n">last_off</span><span class="p">,</span> <span class="n">last_buf</span> <span class="o">=</span> <span class="n">bufs</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">]</span>
+        <span class="n">last_end</span> <span class="o">=</span> <span class="n">last_off</span> <span class="o">+</span> <span class="nb">len</span><span class="p">(</span><span class="n">last_buf</span><span class="p">)</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">log</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="s">&quot;Chunk fill: </span><span class="si">%d</span><span class="s">:</span><span class="si">%d</span><span class="s">&quot;</span><span class="p">,</span> <span class="n">offset</span><span class="p">,</span> <span class="nb">len</span><span class="p">(</span><span class="n">last_buf</span><span class="p">))</span>
+        <span class="n">result</span> <span class="o">+=</span> <span class="n">last_buf</span>
+        <span class="n">offset</span> <span class="o">+=</span> <span class="nb">len</span><span class="p">(</span><span class="n">last_buf</span><span class="p">)</span>
+
+        <span class="k">if</span> <span class="n">last_end</span> <span class="o">&lt;</span> <span class="n">end</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">log</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="s">&quot;Zero fill: </span><span class="si">%d</span><span class="s">:</span><span class="si">%d</span><span class="s">&quot;</span><span class="p">,</span> <span class="n">offset</span><span class="p">,</span>
+                           <span class="p">((</span><span class="n">offset</span> <span class="o">+</span> <span class="n">length</span><span class="p">)</span> <span class="o">-</span> <span class="n">last_end</span><span class="p">))</span>
+            <span class="n">result</span> <span class="o">+=</span> <span class="s">&quot;</span><span class="se">\x00</span><span class="s">&quot;</span> <span class="o">*</span> <span class="p">((</span><span class="n">offset</span> <span class="o">+</span> <span class="n">length</span><span class="p">)</span> <span class="o">-</span> <span class="n">last_end</span><span class="p">)</span>
+
+        <span class="k">return</span> <span class="n">result</span></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-67'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-67'>#</a>
+      </div>
+      <h2><span id="op:-remove-version" href="op:-remove-version"> OP: Remove Version </span></h2>
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-68'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-68'>#</a>
+      </div>
+      <p>Remove <code>version</code> of <code>name</code>. Use special version <code>HEAD</code> for the last version.</p>
+<p>Effects on CAS pool:</p>
+<ul>
+<li>Decreases refcount of all CAS objects in recipe</li>
+</ul>
+<p>Never deletes index object, even if it has no longer a version stored</p>
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre>    <span class="k">def</span> <span class="nf">remove_version</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="p">,</span> <span class="n">version</span><span class="o">=</span><span class="s">&quot;HEAD&quot;</span><span class="p">):</span></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-69'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-69'>#</a>
+      </div>
+      
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre>        <span class="n">version</span><span class="p">,</span> <span class="n">recipe_obj</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_resolve_recipe_obj_from_version</span><span class="p">(</span><span class="n">name</span><span class="p">,</span> <span class="n">version</span><span class="p">)</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">log</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="s">&quot;Removing version </span><span class="si">%r</span><span class="s"> of object </span><span class="si">%r</span><span class="s">&quot;</span><span class="p">,</span> <span class="n">version</span><span class="p">,</span> <span class="n">name</span><span class="p">)</span>
+        <span class="n">recipe</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">recipe</span><span class="o">.</span><span class="n">unpack</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">cas</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">recipe_obj</span><span class="p">))</span>
+
+        <span class="k">for</span> <span class="n">_</span><span class="p">,</span> <span class="n">_</span><span class="p">,</span> <span class="n">fp</span> <span class="ow">in</span> <span class="n">recipe</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">cas</span><span class="o">.</span><span class="n">down</span><span class="p">(</span><span class="n">fp</span><span class="p">)</span>
+
+        <span class="n">w_op</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">index_io_ctx</span><span class="o">.</span><span class="n">create_write_op</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">index_io_ctx</span><span class="o">.</span><span class="n">remove_omap_keys</span><span class="p">(</span><span class="n">w_op</span><span class="p">,</span> <span class="p">(</span><span class="n">version</span><span class="p">,))</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">index_io_ctx</span><span class="o">.</span><span class="n">operate_write_op</span><span class="p">(</span><span class="n">w_op</span><span class="p">,</span> <span class="n">name</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">index_io_ctx</span><span class="o">.</span><span class="n">release_write_op</span><span class="p">(</span><span class="n">w_op</span><span class="p">)</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">cas</span><span class="o">.</span><span class="n">down</span><span class="p">(</span><span class="n">recipe_obj</span><span class="p">)</span></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-70'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-70'>#</a>
+      </div>
+      <h2><span id="op:-remove-all-version" href="op:-remove-all-version"> OP: Remove All Version </span></h2>
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-71'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-71'>#</a>
+      </div>
+      <p>Remove all versions of an object and the index object itself.
+Executes <code>remove_version</code> on every recipe stored.</p>
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre>    <span class="k">def</span> <span class="nf">remove_all_versions</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">name</span><span class="p">):</span></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-72'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-72'>#</a>
+      </div>
+      
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre>        <span class="n">todo</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_versions_and_recipes</span><span class="p">(</span><span class="n">name</span><span class="p">))</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">log</span><span class="o">.</span><span class="n">debug</span><span class="p">(</span><span class="s">&quot;Removing ALL of object [</span><span class="si">%r</span><span class="s">]: </span><span class="si">%r</span><span class="s">&quot;</span><span class="p">,</span> <span class="n">name</span><span class="p">,</span> <span class="n">todo</span><span class="p">)</span>
+
+        <span class="k">for</span> <span class="n">version</span><span class="p">,</span> <span class="n">_</span> <span class="ow">in</span> <span class="n">todo</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">remove_version</span><span class="p">(</span><span class="n">name</span><span class="p">,</span> <span class="n">version</span><span class="p">)</span>
+
+        <span class="bp">self</span><span class="o">.</span><span class="n">index_io_ctx</span><span class="o">.</span><span class="n">remove_object</span><span class="p">(</span><span class="n">name</span><span class="p">)</span>
+
+</pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+</div>
+</body>

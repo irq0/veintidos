@@ -1,0 +1,478 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta http-equiv="content-type" content="text/html;charset=utf-8">
+  <title>test_vaceph_commandline.py</title>
+  <link rel="stylesheet" href="../pycco.css">
+</head>
+<body>
+<div id='container'>
+  <div id="background"></div>
+  <div class='section'>
+    <div class='docs'><h1>test_vaceph_commandline.py</h1></div>
+  </div>
+  <div class='clearall'>
+  <div class='section' id='section-0'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-0'>#</a>
+      </div>
+      <p>UTF-8? ✓</p>
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-1'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-1'>#</a>
+      </div>
+      <p>Test <code>veintidos.py</code> CLI</p>
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre><span class="kn">import</span> <span class="nn">os</span>
+<span class="kn">import</span> <span class="nn">tempfile</span>
+<span class="kn">from</span> <span class="nn">subprocess</span> <span class="kn">import</span> <span class="n">call</span>
+<span class="kn">import</span> <span class="nn">threading</span>
+
+<span class="kn">from</span> <span class="nn">rados</span> <span class="kn">import</span> <span class="n">Rados</span>
+<span class="kn">from</span> <span class="nn">nose.tools</span> <span class="kn">import</span> <span class="n">eq_</span> <span class="k">as</span> <span class="n">eq</span>
+
+<span class="kn">from</span> <span class="nn">util</span> <span class="kn">import</span> <span class="n">random_bytes</span><span class="p">,</span> <span class="n">random_id</span><span class="p">,</span> <span class="n">eq_file</span><span class="p">,</span> <span class="n">zeros</span></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-2'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-2'>#</a>
+      </div>
+      <h1><span id="setup-/-tear-down" href="setup-/-tear-down"> Setup / Tear Down </span></h1>
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-3'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-3'>#</a>
+      </div>
+      <p>Use RADOS connection to create a temporary pool. Tests create their own
+RADOS connections later</p>
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre><span class="n">POOL_NAME</span> <span class="o">=</span> <span class="bp">None</span></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-4'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-4'>#</a>
+      </div>
+      
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre><span class="k">def</span> <span class="nf">setup_module</span><span class="p">():</span>
+    <span class="k">global</span> <span class="n">rados</span>
+    <span class="n">rados</span> <span class="o">=</span> <span class="n">Rados</span><span class="p">(</span><span class="n">conffile</span><span class="o">=</span><span class="s">&#39;&#39;</span><span class="p">)</span>
+    <span class="n">rados</span><span class="o">.</span><span class="n">connect</span><span class="p">()</span>
+
+    <span class="k">global</span> <span class="n">POOL_NAME</span>
+    <span class="n">POOL_NAME</span> <span class="o">=</span> <span class="n">random_id</span><span class="p">()</span>
+    <span class="n">rados</span><span class="o">.</span><span class="n">create_pool</span><span class="p">(</span><span class="n">POOL_NAME</span><span class="p">)</span></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-5'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-5'>#</a>
+      </div>
+      
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre><span class="k">def</span> <span class="nf">teardown_module</span><span class="p">():</span>
+    <span class="k">global</span> <span class="n">POOL_NAME</span>
+    <span class="n">rados</span><span class="o">.</span><span class="n">delete_pool</span><span class="p">(</span><span class="n">POOL_NAME</span><span class="p">)</span></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-6'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-6'>#</a>
+      </div>
+      <h1><span id="utility-functions" href="utility-functions"> Utility Functions </span></h1>
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-7'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-7'>#</a>
+      </div>
+      <p>Create temporary file with content generated by <code>content_func</code></p>
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre><span class="k">def</span> <span class="nf">prepare_input_file</span><span class="p">(</span><span class="n">size</span><span class="p">,</span> <span class="n">content_func</span><span class="o">=</span><span class="n">random_bytes</span><span class="p">):</span></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-8'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-8'>#</a>
+      </div>
+      
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre>    <span class="n">f</span> <span class="o">=</span> <span class="n">tempfile</span><span class="o">.</span><span class="n">NamedTemporaryFile</span><span class="p">(</span><span class="n">delete</span><span class="o">=</span><span class="bp">False</span><span class="p">)</span>
+    <span class="n">f</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">content_func</span><span class="p">(</span><span class="n">size</span><span class="p">))</span>
+    <span class="n">f</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+
+    <span class="k">print</span> <span class="s">&quot;Input file:&quot;</span><span class="p">,</span> <span class="n">f</span><span class="o">.</span><span class="n">name</span>
+    <span class="k">return</span> <span class="n">f</span><span class="o">.</span><span class="n">name</span></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-9'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-9'>#</a>
+      </div>
+      <p>Create temporary FIFO with content generated by <code>content_func</code></p>
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre><span class="k">def</span> <span class="nf">prepare_input_fifo</span><span class="p">(</span><span class="n">size</span><span class="p">,</span> <span class="n">content_func</span><span class="o">=</span><span class="n">random_bytes</span><span class="p">):</span></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-10'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-10'>#</a>
+      </div>
+      
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-11'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-11'>#</a>
+      </div>
+      <p>Write data first to a file and then from there to FIFO
+(.. so that we can compare contents with the output file later)</p>
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre>    <span class="n">f</span> <span class="o">=</span> <span class="n">tempfile</span><span class="o">.</span><span class="n">NamedTemporaryFile</span><span class="p">(</span><span class="n">delete</span><span class="o">=</span><span class="bp">False</span><span class="p">)</span>
+    <span class="n">f</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">content_func</span><span class="p">(</span><span class="n">size</span><span class="p">))</span>
+    <span class="n">f</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+    <span class="n">f_fn</span> <span class="o">=</span> <span class="n">f</span><span class="o">.</span><span class="n">name</span>
+
+    <span class="n">fifo_fn</span> <span class="o">=</span> <span class="n">os</span><span class="o">.</span><span class="n">path</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">tempfile</span><span class="o">.</span><span class="n">gettempdir</span><span class="p">(),</span> <span class="n">random_id</span><span class="p">())</span>
+    <span class="n">os</span><span class="o">.</span><span class="n">mkfifo</span><span class="p">(</span><span class="n">fifo_fn</span><span class="p">)</span></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-12'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-12'>#</a>
+      </div>
+      
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre>    <span class="k">def</span> <span class="nf">writer</span><span class="p">():</span>
+        <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">f_fn</span><span class="p">,</span> <span class="s">&quot;r&quot;</span><span class="p">)</span> <span class="k">as</span> <span class="n">f_fd</span><span class="p">:</span>
+            <span class="k">with</span> <span class="nb">open</span><span class="p">(</span><span class="n">fifo_fn</span><span class="p">,</span> <span class="s">&quot;w&quot;</span><span class="p">)</span> <span class="k">as</span> <span class="n">fifo_fd</span><span class="p">:</span>
+                <span class="k">for</span> <span class="n">line</span> <span class="ow">in</span> <span class="n">f_fd</span><span class="p">:</span>
+                    <span class="n">fifo_fd</span><span class="o">.</span><span class="n">write</span><span class="p">(</span><span class="n">line</span><span class="p">)</span>
+
+    <span class="n">threading</span><span class="o">.</span><span class="n">Thread</span><span class="p">(</span><span class="n">target</span><span class="o">=</span><span class="n">writer</span><span class="p">)</span><span class="o">.</span><span class="n">start</span><span class="p">()</span>
+
+    <span class="k">print</span> <span class="s">&quot;Input file: fifo=&quot;</span><span class="p">,</span> <span class="n">fifo_fn</span><span class="p">,</span> <span class="s">&quot;file=&quot;</span><span class="p">,</span> <span class="n">f_fn</span>
+    <span class="k">return</span> <span class="n">f_fn</span><span class="p">,</span> <span class="n">fifo_fn</span></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-13'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-13'>#</a>
+      </div>
+      <p>Create empty temporary file</p>
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre><span class="k">def</span> <span class="nf">prepare_output_file</span><span class="p">():</span></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-14'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-14'>#</a>
+      </div>
+      
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre>    <span class="n">f</span> <span class="o">=</span> <span class="n">tempfile</span><span class="o">.</span><span class="n">NamedTemporaryFile</span><span class="p">(</span><span class="n">delete</span><span class="o">=</span><span class="bp">False</span><span class="p">)</span>
+    <span class="n">f</span><span class="o">.</span><span class="n">close</span><span class="p">()</span>
+
+    <span class="k">print</span> <span class="s">&quot;Output file:&quot;</span><span class="p">,</span> <span class="n">f</span><span class="o">.</span><span class="n">name</span>
+    <span class="k">return</span> <span class="n">f</span><span class="o">.</span><span class="n">name</span></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-15'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-15'>#</a>
+      </div>
+      <h1><span id="test-utility-functions" href="test-utility-functions"> Test Utility Functions </span></h1>
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-16'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-16'>#</a>
+      </div>
+      <p>Create file with <code>size</code> and content generated by <code>content_func</code>.
+Use CLI to PUT and GET that file. Compare afterwards</p>
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre><span class="k">def</span> <span class="nf">put_and_compare_file</span><span class="p">(</span><span class="n">size</span><span class="p">,</span> <span class="n">content_func</span><span class="p">):</span></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-17'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-17'>#</a>
+      </div>
+      
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre>    <span class="n">obj</span> <span class="o">=</span> <span class="n">random_id</span><span class="p">()</span>
+    <span class="n">in_file</span> <span class="o">=</span> <span class="n">prepare_input_file</span><span class="p">(</span><span class="n">size</span><span class="p">,</span> <span class="n">content_func</span><span class="p">)</span>
+    <span class="n">out_file</span> <span class="o">=</span> <span class="n">prepare_output_file</span><span class="p">()</span>
+
+    <span class="n">ret</span> <span class="o">=</span> <span class="n">call</span><span class="p">([</span><span class="s">&quot;./veintidos.py&quot;</span><span class="p">,</span>
+                <span class="s">&quot;--pool&quot;</span><span class="p">,</span> <span class="n">POOL_NAME</span><span class="p">,</span>
+                <span class="s">&quot;put&quot;</span><span class="p">,</span> <span class="n">obj</span><span class="p">,</span>
+                <span class="n">in_file</span><span class="p">])</span>
+    <span class="n">eq</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">ret</span><span class="p">)</span>
+
+    <span class="n">ret</span> <span class="o">=</span> <span class="n">call</span><span class="p">([</span><span class="s">&quot;./veintidos.py&quot;</span><span class="p">,</span>
+                <span class="s">&quot;--pool&quot;</span><span class="p">,</span> <span class="n">POOL_NAME</span><span class="p">,</span>
+                <span class="s">&quot;get&quot;</span><span class="p">,</span> <span class="n">obj</span><span class="p">,</span>
+                <span class="n">out_file</span><span class="p">])</span>
+    <span class="n">eq</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">ret</span><span class="p">)</span>
+
+    <span class="n">eq_file</span><span class="p">(</span><span class="n">in_file</span><span class="p">,</span> <span class="n">out_file</span><span class="p">)</span>
+
+    <span class="n">os</span><span class="o">.</span><span class="n">unlink</span><span class="p">(</span><span class="n">in_file</span><span class="p">)</span>
+    <span class="n">os</span><span class="o">.</span><span class="n">unlink</span><span class="p">(</span><span class="n">out_file</span><span class="p">)</span></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-18'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-18'>#</a>
+      </div>
+      <p>Create FIFO with <code>size</code> and content generated by <code>content_func</code>.
+Use CLI to PUT and GET that file. Compare afterwards.</p>
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre><span class="k">def</span> <span class="nf">put_and_compare_fifo</span><span class="p">(</span><span class="n">size</span><span class="p">,</span> <span class="n">content_func</span><span class="p">):</span></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-19'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-19'>#</a>
+      </div>
+      
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre>    <span class="n">obj</span> <span class="o">=</span> <span class="n">random_id</span><span class="p">()</span>
+    <span class="n">in_file</span><span class="p">,</span> <span class="n">in_fifo</span> <span class="o">=</span> <span class="n">prepare_input_fifo</span><span class="p">(</span><span class="n">size</span><span class="p">,</span> <span class="n">content_func</span><span class="p">)</span>
+    <span class="n">out_file</span> <span class="o">=</span> <span class="n">prepare_output_file</span><span class="p">()</span>
+
+    <span class="n">ret</span> <span class="o">=</span> <span class="n">call</span><span class="p">([</span><span class="s">&quot;./veintidos.py&quot;</span><span class="p">,</span>
+                <span class="s">&quot;--pool&quot;</span><span class="p">,</span> <span class="n">POOL_NAME</span><span class="p">,</span>
+                <span class="s">&quot;put&quot;</span><span class="p">,</span> <span class="n">obj</span><span class="p">,</span>
+                <span class="n">in_fifo</span><span class="p">])</span>
+    <span class="n">eq</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">ret</span><span class="p">)</span>
+
+    <span class="n">ret</span> <span class="o">=</span> <span class="n">call</span><span class="p">([</span><span class="s">&quot;./veintidos.py&quot;</span><span class="p">,</span>
+                <span class="s">&quot;--pool&quot;</span><span class="p">,</span> <span class="n">POOL_NAME</span><span class="p">,</span>
+                <span class="s">&quot;get&quot;</span><span class="p">,</span> <span class="n">obj</span><span class="p">,</span>
+                <span class="n">out_file</span><span class="p">])</span>
+    <span class="n">eq</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="n">ret</span><span class="p">)</span>
+
+    <span class="n">eq_file</span><span class="p">(</span><span class="n">in_file</span><span class="p">,</span> <span class="n">out_file</span><span class="p">)</span>
+
+    <span class="n">os</span><span class="o">.</span><span class="n">unlink</span><span class="p">(</span><span class="n">in_file</span><span class="p">)</span>
+    <span class="n">os</span><span class="o">.</span><span class="n">unlink</span><span class="p">(</span><span class="n">in_fifo</span><span class="p">)</span>
+    <span class="n">os</span><span class="o">.</span><span class="n">unlink</span><span class="p">(</span><span class="n">out_file</span><span class="p">)</span></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-20'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-20'>#</a>
+      </div>
+      <h1><span id="tests" href="tests"> Tests </span></h1>
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-21'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-21'>#</a>
+      </div>
+      <p>Parameterize above Test Utility Functions</p>
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre><span class="k">def</span> <span class="nf">test_put_from_fifo_with_small_input_gets_the_same_content_back</span><span class="p">():</span></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-22'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-22'>#</a>
+      </div>
+      <p>Test: CLI put FIFO small input</p>
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre>    <span class="n">put_and_compare_fifo</span><span class="p">(</span><span class="mi">42</span><span class="p">,</span> <span class="n">random_bytes</span><span class="p">)</span>
+    <span class="n">put_and_compare_fifo</span><span class="p">(</span><span class="mi">42</span><span class="p">,</span> <span class="n">zeros</span><span class="p">)</span></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-23'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-23'>#</a>
+      </div>
+      <p>Test: CLI put regular file small input</p>
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre><span class="k">def</span> <span class="nf">test_put_from_file_with_small_input_gets_the_same_content_back</span><span class="p">():</span></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-24'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-24'>#</a>
+      </div>
+      
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre>    <span class="n">put_and_compare_file</span><span class="p">(</span><span class="mi">42</span><span class="p">,</span> <span class="n">random_bytes</span><span class="p">)</span>
+    <span class="n">put_and_compare_file</span><span class="p">(</span><span class="mi">42</span><span class="p">,</span> <span class="n">zeros</span><span class="p">)</span></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-25'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-25'>#</a>
+      </div>
+      <p>Test: CLI put FIFO 8M input</p>
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre><span class="k">def</span> <span class="nf">test_put_from_fifo_8M_input_gets_the_same_content_back</span><span class="p">():</span></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-26'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-26'>#</a>
+      </div>
+      
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre>    <span class="n">put_and_compare_fifo</span><span class="p">(</span><span class="mi">8</span><span class="o">*</span><span class="mi">1024</span><span class="o">**</span><span class="mi">2</span><span class="p">,</span> <span class="n">random_bytes</span><span class="p">)</span>
+    <span class="n">put_and_compare_fifo</span><span class="p">(</span><span class="mi">8</span><span class="o">*</span><span class="mi">1024</span><span class="o">**</span><span class="mi">2</span><span class="p">,</span> <span class="n">zeros</span><span class="p">)</span></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-27'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-27'>#</a>
+      </div>
+      <p>Test: CLI put regular file 8M input</p>
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre><span class="k">def</span> <span class="nf">test_put_from_file_8M_input_gets_the_same_content_back</span><span class="p">():</span></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-28'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-28'>#</a>
+      </div>
+      
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre>    <span class="n">put_and_compare_file</span><span class="p">(</span><span class="mi">8</span><span class="o">*</span><span class="mi">1024</span><span class="o">**</span><span class="mi">2</span><span class="p">,</span> <span class="n">random_bytes</span><span class="p">)</span>
+    <span class="n">put_and_compare_file</span><span class="p">(</span><span class="mi">8</span><span class="o">*</span><span class="mi">1024</span><span class="o">**</span><span class="mi">2</span><span class="p">,</span> <span class="n">zeros</span><span class="p">)</span></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-29'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-29'>#</a>
+      </div>
+      <p>Test: CLI put file 100M only zeros</p>
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre><span class="k">def</span> <span class="nf">test_put_from_file_100M_zeros</span><span class="p">():</span></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-30'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-30'>#</a>
+      </div>
+      
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre>    <span class="n">put_and_compare_file</span><span class="p">(</span><span class="mi">100</span><span class="o">*</span><span class="mi">1024</span><span class="o">**</span><span class="mi">2</span><span class="p">,</span> <span class="n">zeros</span><span class="p">)</span>
+
+</pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+</div>
+</body>

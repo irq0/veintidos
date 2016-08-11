@@ -1,0 +1,425 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta http-equiv="content-type" content="text/html;charset=utf-8">
+  <title>veintidos.py</title>
+  <link rel="stylesheet" href="pycco.css">
+</head>
+<body>
+<div id='container'>
+  <div id="background"></div>
+  <div class='section'>
+    <div class='docs'><h1>veintidos.py</h1></div>
+  </div>
+  <div class='clearall'>
+  <div class='section' id='section-0'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-0'>#</a>
+      </div>
+      <p>UTF-8? ✓</p>
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-1'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-1'>#</a>
+      </div>
+      <p>Veintidos Commandline Interface</p>
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre><span class="kn">import</span> <span class="nn">logging</span>
+<span class="kn">import</span> <span class="nn">argparse</span>
+
+<span class="kn">from</span> <span class="nn">rados</span> <span class="kn">import</span> <span class="n">Rados</span><span class="p">,</span> <span class="n">ObjectExists</span>
+
+<span class="kn">import</span> <span class="nn">veintidos.cas</span> <span class="kn">as</span> <span class="nn">cas</span>
+<span class="kn">from</span> <span class="nn">veintidos.chunk</span> <span class="kn">import</span> <span class="n">Chunker</span>
+<span class="kn">from</span> <span class="nn">veintidos.cas</span> <span class="kn">import</span> <span class="n">Compressor</span></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-2'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-2'>#</a>
+      </div>
+      <h1><span id="setup-functions" href="setup-functions"> Setup Functions </span></h1>
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-3'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-3'>#</a>
+      </div>
+      <h2><span id="rados-and-i/o-contexts" href="rados-and-i/o-contexts"> RADOS and I/O Contexts </span></h2>
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre><span class="n">RADOS</span> <span class="o">=</span> <span class="bp">None</span>
+<span class="n">CAS</span> <span class="o">=</span> <span class="bp">None</span>
+<span class="n">CHUNKER</span> <span class="o">=</span> <span class="bp">None</span>
+<span class="n">IOCTX_CAS</span> <span class="o">=</span> <span class="bp">None</span>
+<span class="n">IOCTX_INDEX</span> <span class="o">=</span> <span class="bp">None</span></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-4'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-4'>#</a>
+      </div>
+      
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre><span class="k">def</span> <span class="nf">setup_rados</span><span class="p">(</span><span class="n">args</span><span class="p">):</span>
+    <span class="k">global</span> <span class="n">RADOS</span>
+    <span class="n">RADOS</span> <span class="o">=</span> <span class="n">Rados</span><span class="p">(</span><span class="n">conffile</span><span class="o">=</span><span class="s">&#39;&#39;</span><span class="p">)</span>
+    <span class="n">RADOS</span><span class="o">.</span><span class="n">connect</span><span class="p">()</span>
+
+    <span class="k">try</span><span class="p">:</span>
+        <span class="n">RADOS</span><span class="o">.</span><span class="n">create_pool</span><span class="p">(</span><span class="n">args</span><span class="o">.</span><span class="n">pool</span><span class="p">)</span>
+    <span class="k">except</span> <span class="n">ObjectExists</span><span class="p">:</span>
+        <span class="k">pass</span>
+
+    <span class="k">global</span> <span class="n">IOCTX_CAS</span>
+    <span class="k">global</span> <span class="n">IOCTX_INDEX</span>
+    <span class="n">IOCTX_CAS</span> <span class="o">=</span> <span class="n">RADOS</span><span class="o">.</span><span class="n">open_ioctx</span><span class="p">(</span><span class="n">args</span><span class="o">.</span><span class="n">pool</span><span class="p">)</span>
+    <span class="n">IOCTX_INDEX</span> <span class="o">=</span> <span class="n">RADOS</span><span class="o">.</span><span class="n">open_ioctx</span><span class="p">(</span><span class="n">args</span><span class="o">.</span><span class="n">pool</span><span class="p">)</span>
+
+    <span class="k">global</span> <span class="n">CAS</span>
+    <span class="k">global</span> <span class="n">CHUNKER</span>
+
+    <span class="k">if</span> <span class="s">&quot;compression&quot;</span> <span class="ow">in</span> <span class="n">args</span><span class="p">:</span>
+        <span class="n">CAS</span> <span class="o">=</span> <span class="n">cas</span><span class="o">.</span><span class="n">CAS</span><span class="p">(</span><span class="n">IOCTX_CAS</span><span class="p">,</span> <span class="n">compression</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">compression</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">CAS</span> <span class="o">=</span> <span class="n">cas</span><span class="o">.</span><span class="n">CAS</span><span class="p">(</span><span class="n">IOCTX_CAS</span><span class="p">)</span>
+
+    <span class="k">if</span> <span class="s">&quot;chunk_size&quot;</span> <span class="ow">in</span> <span class="n">args</span><span class="p">:</span>
+        <span class="n">CHUNKER</span> <span class="o">=</span> <span class="n">Chunker</span><span class="p">(</span><span class="n">CAS</span><span class="p">,</span> <span class="n">IOCTX_INDEX</span><span class="p">,</span> <span class="n">chunk_size</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">chunk_size</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">CHUNKER</span> <span class="o">=</span> <span class="n">Chunker</span><span class="p">(</span><span class="n">CAS</span><span class="p">,</span> <span class="n">IOCTX_INDEX</span><span class="p">)</span></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-5'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-5'>#</a>
+      </div>
+      <h2><span id="logger" href="logger"> Logger </span></h2>
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-6'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-6'>#</a>
+      </div>
+      
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre><span class="k">def</span> <span class="nf">setup_logging</span><span class="p">(</span><span class="n">args</span><span class="p">):</span>
+    <span class="n">logging</span><span class="o">.</span><span class="n">basicConfig</span><span class="p">(</span><span class="n">level</span><span class="o">=</span><span class="n">args</span><span class="o">.</span><span class="n">loglevel</span><span class="p">,</span>
+                        <span class="n">format</span><span class="o">=</span><span class="s">&quot;&quot;</span>
+                        <span class="s">&quot;</span><span class="si">%(asctime)-15s</span><span class="s"> </span><span class="si">%(levelname)-9s</span><span class="s">&quot;</span>
+                        <span class="s">&quot;</span><span class="si">%(threadName)-12s</span><span class="s"> </span><span class="si">%(name)-15s</span><span class="s"> </span><span class="si">%(filename)s</span><span class="s">:</span><span class="si">%(lineno)s</span><span class="s"> -&gt; </span><span class="si">%(funcName)s</span><span class="s">():&quot;</span>
+                        <span class="s">&quot;</span><span class="se">\n\t</span><span class="s">&quot;</span>
+                        <span class="s">&quot;</span><span class="si">%(message)s</span><span class="s">&quot;</span><span class="p">)</span></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-7'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-7'>#</a>
+      </div>
+      <h1><span id="commands" href="commands"> Commands </span></h1>
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-8'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-8'>#</a>
+      </div>
+      <p>Dispatched by main from commandline args</p>
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-9'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-9'>#</a>
+      </div>
+      <h2><span id="ls" href="ls"> ls </span></h2>
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-10'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-10'>#</a>
+      </div>
+      
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre><span class="k">def</span> <span class="nf">cmd_ls</span><span class="p">(</span><span class="n">args</span><span class="p">):</span>
+
+    <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">cas</span><span class="p">:</span>
+        <span class="k">print</span> <span class="s">&quot;CAS Objects:&quot;</span>
+        <span class="k">for</span> <span class="n">obj</span><span class="p">,</span> <span class="n">refcount</span> <span class="ow">in</span> <span class="n">CAS</span><span class="o">.</span><span class="n">list</span><span class="p">():</span>
+            <span class="k">print</span> <span class="n">obj</span><span class="p">,</span> <span class="s">&quot;#&quot;</span><span class="p">,</span> <span class="n">refcount</span>
+
+    <span class="k">print</span>
+
+    <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">index</span><span class="p">:</span>
+        <span class="k">print</span> <span class="s">&quot;Index Objects:&quot;</span>
+        <span class="n">objs</span> <span class="o">=</span> <span class="p">[</span><span class="n">o</span><span class="o">.</span><span class="n">key</span> <span class="k">for</span> <span class="n">o</span> <span class="ow">in</span> <span class="n">IOCTX_INDEX</span><span class="o">.</span><span class="n">list_objects</span><span class="p">()</span>
+                <span class="k">if</span> <span class="n">o</span><span class="o">.</span><span class="n">nspace</span> <span class="o">==</span> <span class="s">&quot;INDEX&quot;</span><span class="p">]</span>
+
+        <span class="k">for</span> <span class="n">obj</span> <span class="ow">in</span> <span class="n">objs</span><span class="p">:</span>
+            <span class="k">print</span> <span class="n">obj</span><span class="p">,</span> <span class="s">&quot;→&quot;</span><span class="p">,</span> <span class="s">&quot;, &quot;</span><span class="o">.</span><span class="n">join</span><span class="p">(</span><span class="n">CHUNKER</span><span class="o">.</span><span class="n">versions</span><span class="p">(</span><span class="n">obj</span><span class="p">))</span></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-11'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-11'>#</a>
+      </div>
+      <h2><span id="put" href="put"> put </span></h2>
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-12'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-12'>#</a>
+      </div>
+      
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre><span class="k">def</span> <span class="nf">cmd_put</span><span class="p">(</span><span class="n">args</span><span class="p">):</span>
+    <span class="n">version</span> <span class="o">=</span> <span class="n">CHUNKER</span><span class="o">.</span><span class="n">write_full</span><span class="p">(</span><span class="n">args</span><span class="o">.</span><span class="n">name</span><span class="p">,</span> <span class="n">args</span><span class="o">.</span><span class="n">file</span><span class="p">)</span>
+    <span class="k">print</span> <span class="s">&quot;Wrote {} version {}&quot;</span><span class="o">.</span><span class="n">format</span><span class="p">(</span><span class="n">args</span><span class="o">.</span><span class="n">name</span><span class="p">,</span> <span class="n">version</span><span class="p">)</span></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-13'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-13'>#</a>
+      </div>
+      <h2><span id="rm" href="rm"> rm </span></h2>
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-14'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-14'>#</a>
+      </div>
+      
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre><span class="k">def</span> <span class="nf">cmd_rm</span><span class="p">(</span><span class="n">args</span><span class="p">):</span>
+    <span class="k">if</span> <span class="n">args</span><span class="o">.</span><span class="n">version</span> <span class="o">==</span> <span class="s">&quot;ALL&quot;</span><span class="p">:</span>
+        <span class="n">CHUNKER</span><span class="o">.</span><span class="n">remove_all_versions</span><span class="p">(</span><span class="n">args</span><span class="o">.</span><span class="n">name</span><span class="p">)</span>
+    <span class="k">else</span><span class="p">:</span>
+        <span class="n">CHUNKER</span><span class="o">.</span><span class="n">remove_version</span><span class="p">(</span><span class="n">args</span><span class="o">.</span><span class="n">name</span><span class="p">,</span> <span class="n">args</span><span class="o">.</span><span class="n">version</span><span class="p">)</span></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-15'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-15'>#</a>
+      </div>
+      <h2><span id="get" href="get"> get </span></h2>
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-16'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-16'>#</a>
+      </div>
+      
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre><span class="k">def</span> <span class="nf">cmd_get</span><span class="p">(</span><span class="n">args</span><span class="p">):</span>
+    <span class="n">CHUNKER</span><span class="o">.</span><span class="n">read_full</span><span class="p">(</span><span class="n">args</span><span class="o">.</span><span class="n">name</span><span class="p">,</span> <span class="n">args</span><span class="o">.</span><span class="n">file</span><span class="p">,</span> <span class="n">args</span><span class="o">.</span><span class="n">version</span><span class="p">)</span></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-17'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-17'>#</a>
+      </div>
+      <h1><span id="commandline-parser" href="commandline-parser"> Commandline Parser </span></h1>
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-18'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-18'>#</a>
+      </div>
+      
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre><span class="k">def</span> <span class="nf">parse_cmdline</span><span class="p">():</span></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-19'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-19'>#</a>
+      </div>
+      <p>common</p>
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre>    <span class="n">parser</span> <span class="o">=</span> <span class="n">argparse</span><span class="o">.</span><span class="n">ArgumentParser</span><span class="p">(</span><span class="n">prog</span><span class="o">=</span><span class="s">&quot;veintidos client&quot;</span><span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span><span class="s">&quot;--pool&quot;</span><span class="p">,</span> <span class="nb">type</span><span class="o">=</span><span class="nb">str</span><span class="p">,</span> <span class="n">default</span><span class="o">=</span><span class="s">&quot;veintidos&quot;</span><span class="p">,</span> <span class="n">help</span><span class="o">=</span><span class="s">&quot;Ceph pool&quot;</span><span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span><span class="s">&quot;--debug&quot;</span><span class="p">,</span> <span class="n">action</span><span class="o">=</span><span class="s">&quot;store_const&quot;</span><span class="p">,</span> <span class="n">dest</span><span class="o">=</span><span class="s">&quot;loglevel&quot;</span><span class="p">,</span> <span class="n">const</span><span class="o">=</span><span class="n">logging</span><span class="o">.</span><span class="n">DEBUG</span><span class="p">)</span>
+    <span class="n">parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span><span class="s">&quot;--verbose&quot;</span><span class="p">,</span> <span class="n">action</span><span class="o">=</span><span class="s">&quot;store_const&quot;</span><span class="p">,</span> <span class="n">dest</span><span class="o">=</span><span class="s">&quot;loglevel&quot;</span><span class="p">,</span> <span class="n">const</span><span class="o">=</span><span class="n">logging</span><span class="o">.</span><span class="n">INFO</span><span class="p">)</span>
+
+    <span class="n">subparsers</span> <span class="o">=</span> <span class="n">parser</span><span class="o">.</span><span class="n">add_subparsers</span><span class="p">()</span></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-20'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-20'>#</a>
+      </div>
+      <p>ls</p>
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre>    <span class="n">ls_parser</span> <span class="o">=</span> <span class="n">subparsers</span><span class="o">.</span><span class="n">add_parser</span><span class="p">(</span><span class="s">&quot;ls&quot;</span><span class="p">,</span> <span class="n">help</span><span class="o">=</span><span class="s">&quot;List CAS and INDEX objects&quot;</span><span class="p">)</span>
+    <span class="n">ls_parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span><span class="s">&#39;--no-index&#39;</span><span class="p">,</span> <span class="n">action</span><span class="o">=</span><span class="s">&quot;store_false&quot;</span><span class="p">,</span> <span class="n">dest</span><span class="o">=</span><span class="s">&quot;index&quot;</span><span class="p">)</span>
+    <span class="n">ls_parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span><span class="s">&#39;--no-cas&#39;</span><span class="p">,</span> <span class="n">action</span><span class="o">=</span><span class="s">&quot;store_false&quot;</span><span class="p">,</span> <span class="n">dest</span><span class="o">=</span><span class="s">&quot;cas&quot;</span><span class="p">)</span>
+    <span class="n">ls_parser</span><span class="o">.</span><span class="n">set_defaults</span><span class="p">(</span><span class="n">func</span><span class="o">=</span><span class="n">cmd_ls</span><span class="p">)</span></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-21'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-21'>#</a>
+      </div>
+      <p>put</p>
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre>    <span class="n">put_parser</span> <span class="o">=</span> <span class="n">subparsers</span><span class="o">.</span><span class="n">add_parser</span><span class="p">(</span><span class="s">&quot;put&quot;</span><span class="p">,</span> <span class="n">help</span><span class="o">=</span><span class="s">&quot;Store file to CAS pool and write INDEX&quot;</span><span class="p">)</span>
+    <span class="n">put_parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span><span class="s">&quot;--compression&quot;</span><span class="p">,</span> <span class="n">default</span><span class="o">=</span><span class="s">&quot;snappy&quot;</span><span class="p">,</span> <span class="n">choices</span><span class="o">=</span><span class="n">Compressor</span><span class="o">.</span><span class="n">supported</span><span class="p">(),</span>
+                            <span class="n">help</span><span class="o">=</span><span class="s">&quot;Select compression algorithm for _new_ objects&quot;</span><span class="p">)</span>
+    <span class="n">put_parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span><span class="s">&quot;--chunk-size&quot;</span><span class="p">,</span> <span class="nb">type</span><span class="o">=</span><span class="nb">int</span><span class="p">,</span> <span class="n">default</span><span class="o">=</span><span class="p">(</span><span class="mi">4</span> <span class="o">*</span> <span class="mi">1024</span><span class="o">**</span><span class="mi">2</span><span class="p">),</span> <span class="n">help</span><span class="o">=</span><span class="s">&quot;Size of chunks in byte&quot;</span><span class="p">)</span>
+    <span class="n">put_parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span><span class="s">&#39;name&#39;</span><span class="p">,</span> <span class="nb">type</span><span class="o">=</span><span class="nb">str</span><span class="p">)</span>
+    <span class="n">put_parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span><span class="s">&#39;file&#39;</span><span class="p">,</span> <span class="nb">type</span><span class="o">=</span><span class="n">argparse</span><span class="o">.</span><span class="n">FileType</span><span class="p">(</span><span class="s">&#39;rb&#39;</span><span class="p">))</span>
+    <span class="n">put_parser</span><span class="o">.</span><span class="n">set_defaults</span><span class="p">(</span><span class="n">func</span><span class="o">=</span><span class="n">cmd_put</span><span class="p">)</span></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-22'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-22'>#</a>
+      </div>
+      <p>rm</p>
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre>    <span class="n">rm_parser</span> <span class="o">=</span> <span class="n">subparsers</span><span class="o">.</span><span class="n">add_parser</span><span class="p">(</span><span class="s">&quot;rm&quot;</span><span class="p">,</span> <span class="n">help</span><span class="o">=</span><span class="s">&quot;Remove file&quot;</span><span class="p">)</span>
+    <span class="n">rm_parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span><span class="s">&#39;name&#39;</span><span class="p">,</span> <span class="nb">type</span><span class="o">=</span><span class="nb">str</span><span class="p">)</span>
+    <span class="n">rm_parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span><span class="s">&#39;--version&#39;</span><span class="p">,</span> <span class="nb">type</span><span class="o">=</span><span class="nb">str</span><span class="p">,</span> <span class="n">default</span><span class="o">=</span><span class="s">&quot;ALL&quot;</span><span class="p">)</span>
+    <span class="n">rm_parser</span><span class="o">.</span><span class="n">set_defaults</span><span class="p">(</span><span class="n">func</span><span class="o">=</span><span class="n">cmd_rm</span><span class="p">)</span></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-23'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-23'>#</a>
+      </div>
+      <p>get</p>
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre>    <span class="n">get_parser</span> <span class="o">=</span> <span class="n">subparsers</span><span class="o">.</span><span class="n">add_parser</span><span class="p">(</span><span class="s">&quot;get&quot;</span><span class="p">,</span> <span class="n">help</span><span class="o">=</span><span class="s">&quot;Retrieve file from CAS pool&quot;</span><span class="p">)</span>
+    <span class="n">get_parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span><span class="s">&#39;name&#39;</span><span class="p">,</span> <span class="nb">type</span><span class="o">=</span><span class="nb">str</span><span class="p">)</span>
+    <span class="n">get_parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span><span class="s">&#39;file&#39;</span><span class="p">,</span> <span class="nb">type</span><span class="o">=</span><span class="n">argparse</span><span class="o">.</span><span class="n">FileType</span><span class="p">(</span><span class="s">&#39;w+b&#39;</span><span class="p">))</span>
+    <span class="n">get_parser</span><span class="o">.</span><span class="n">add_argument</span><span class="p">(</span><span class="s">&#39;--version&#39;</span><span class="p">,</span> <span class="nb">type</span><span class="o">=</span><span class="nb">str</span><span class="p">,</span> <span class="n">default</span><span class="o">=</span><span class="s">&quot;HEAD&quot;</span><span class="p">)</span>
+    <span class="n">get_parser</span><span class="o">.</span><span class="n">set_defaults</span><span class="p">(</span><span class="n">func</span><span class="o">=</span><span class="n">cmd_get</span><span class="p">)</span>
+
+    <span class="k">return</span> <span class="n">parser</span><span class="o">.</span><span class="n">parse_args</span><span class="p">()</span></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-24'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-24'>#</a>
+      </div>
+      <h1><span id="main" href="main"> Main </span></h1>
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-25'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-25'>#</a>
+      </div>
+      
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre><span class="k">def</span> <span class="nf">main</span><span class="p">():</span>
+    <span class="n">args</span> <span class="o">=</span> <span class="n">parse_cmdline</span><span class="p">()</span>
+    <span class="n">setup_logging</span><span class="p">(</span><span class="n">args</span><span class="p">)</span>
+    <span class="n">setup_rados</span><span class="p">(</span><span class="n">args</span><span class="p">)</span>
+    <span class="n">args</span><span class="o">.</span><span class="n">func</span><span class="p">(</span><span class="n">args</span><span class="p">)</span>
+
+<span class="k">if</span> <span class="n">__name__</span> <span class="o">==</span> <span class="s">&quot;__main__&quot;</span><span class="p">:</span>
+    <span class="n">main</span><span class="p">()</span>
+
+</pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+</div>
+</body>

@@ -1,0 +1,671 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta http-equiv="content-type" content="text/html;charset=utf-8">
+  <title>test_cas.py</title>
+  <link rel="stylesheet" href="../pycco.css">
+</head>
+<body>
+<div id='container'>
+  <div id="background"></div>
+  <div class='section'>
+    <div class='docs'><h1>test_cas.py</h1></div>
+  </div>
+  <div class='clearall'>
+  <div class='section' id='section-0'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-0'>#</a>
+      </div>
+      <p>UTF-8? ✓</p>
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-1'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-1'>#</a>
+      </div>
+      <p>CAS / Chunker Unit Tests</p>
+<p>Classes under test:</p>
+<ul>
+<li>CAS</li>
+<li>Chunker</li>
+</ul>
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre><span class="kn">from</span> <span class="nn">StringIO</span> <span class="kn">import</span> <span class="n">StringIO</span>
+
+<span class="kn">from</span> <span class="nn">nose.tools</span> <span class="kn">import</span> <span class="n">eq_</span> <span class="k">as</span> <span class="n">eq</span><span class="p">,</span> <span class="n">assert_raises</span>
+
+<span class="kn">from</span> <span class="nn">rados</span> <span class="kn">import</span> <span class="n">Rados</span><span class="p">,</span> <span class="n">ObjectNotFound</span>
+
+<span class="kn">from</span> <span class="nn">veintidos.cas</span> <span class="kn">import</span> <span class="n">CAS</span><span class="p">,</span> <span class="n">Compressor</span>
+<span class="kn">from</span> <span class="nn">veintidos.chunk</span> <span class="kn">import</span> <span class="n">Chunker</span>
+
+<span class="kn">from</span> <span class="nn">util</span> <span class="kn">import</span> <span class="n">random_id</span><span class="p">,</span> <span class="n">random_bytes</span><span class="p">,</span> <span class="n">eq_buffer</span></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-2'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-2'>#</a>
+      </div>
+      <h1><span id="setup-/-tear-down" href="setup-/-tear-down"> Setup / Tear Down </span></h1>
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-3'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-3'>#</a>
+      </div>
+      <p>Use single RADOS connection for the module. Create new pool for tests
+and delete it afterwards</p>
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre><span class="n">rados</span> <span class="o">=</span> <span class="bp">None</span>
+<span class="n">pool_name</span> <span class="o">=</span> <span class="bp">None</span>
+<span class="n">ioctx_cas</span> <span class="o">=</span> <span class="bp">None</span>
+<span class="n">ioctx_index</span> <span class="o">=</span> <span class="bp">None</span></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-4'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-4'>#</a>
+      </div>
+      
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre><span class="k">def</span> <span class="nf">setup_module</span><span class="p">():</span>
+    <span class="k">global</span> <span class="n">rados</span>
+    <span class="n">rados</span> <span class="o">=</span> <span class="n">Rados</span><span class="p">(</span><span class="n">conffile</span><span class="o">=</span><span class="s">&#39;&#39;</span><span class="p">)</span>
+    <span class="n">rados</span><span class="o">.</span><span class="n">connect</span><span class="p">()</span>
+
+    <span class="k">global</span> <span class="n">pool_name</span>
+    <span class="n">pool_name</span> <span class="o">=</span> <span class="n">random_id</span><span class="p">()</span>
+    <span class="n">rados</span><span class="o">.</span><span class="n">create_pool</span><span class="p">(</span><span class="n">pool_name</span><span class="p">)</span>
+
+    <span class="k">global</span> <span class="n">ioctx_cas</span>
+    <span class="k">global</span> <span class="n">ioctx_index</span>
+    <span class="n">ioctx_cas</span> <span class="o">=</span> <span class="n">rados</span><span class="o">.</span><span class="n">open_ioctx</span><span class="p">(</span><span class="n">pool_name</span><span class="p">)</span>
+    <span class="n">ioctx_index</span> <span class="o">=</span> <span class="n">rados</span><span class="o">.</span><span class="n">open_ioctx</span><span class="p">(</span><span class="n">pool_name</span><span class="p">)</span></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-5'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-5'>#</a>
+      </div>
+      
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre><span class="k">def</span> <span class="nf">teardown_module</span><span class="p">():</span>
+    <span class="k">global</span> <span class="n">pool_name</span>
+    <span class="n">rados</span><span class="o">.</span><span class="n">delete_pool</span><span class="p">(</span><span class="n">pool_name</span><span class="p">)</span></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-6'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-6'>#</a>
+      </div>
+      <h1><span id="tests" href="tests"> Tests </span></h1>
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-7'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-7'>#</a>
+      </div>
+      <h2><span id="cas-class" href="cas-class"> CAS Class </span></h2>
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-8'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-8'>#</a>
+      </div>
+      <p>Test: Write and immediate remove should not leave any object behind</p>
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre><span class="k">def</span> <span class="nf">test_chunker_no_litter</span><span class="p">():</span></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-9'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-9'>#</a>
+      </div>
+      
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre>    <span class="n">cas</span> <span class="o">=</span> <span class="n">CAS</span><span class="p">(</span><span class="n">ioctx_cas</span><span class="p">)</span>
+    <span class="n">chunker</span> <span class="o">=</span> <span class="n">Chunker</span><span class="p">(</span><span class="n">cas</span><span class="p">,</span> <span class="n">ioctx_index</span><span class="p">)</span>
+
+    <span class="n">data_in</span> <span class="o">=</span> <span class="n">StringIO</span><span class="p">(</span><span class="n">random_bytes</span><span class="p">(</span><span class="n">chunker</span><span class="o">.</span><span class="n">chunk_size</span><span class="o">*</span><span class="mi">4</span><span class="p">))</span>
+    <span class="n">obj_name</span> <span class="o">=</span> <span class="n">random_id</span><span class="p">()</span>
+
+    <span class="n">chunker</span><span class="o">.</span><span class="n">write_full</span><span class="p">(</span><span class="n">obj_name</span><span class="p">,</span> <span class="n">data_in</span><span class="p">)</span>
+    <span class="n">chunker</span><span class="o">.</span><span class="n">remove_all_versions</span><span class="p">(</span><span class="n">obj_name</span><span class="p">)</span>
+
+    <span class="n">cas_objs</span> <span class="o">=</span> <span class="p">[</span><span class="n">x</span><span class="o">.</span><span class="n">key</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">ioctx_cas</span><span class="o">.</span><span class="n">list_objects</span><span class="p">()]</span>
+    <span class="n">index_objs</span> <span class="o">=</span> <span class="p">[</span><span class="n">x</span><span class="o">.</span><span class="n">key</span> <span class="k">for</span> <span class="n">x</span> <span class="ow">in</span> <span class="n">ioctx_index</span><span class="o">.</span><span class="n">list_objects</span><span class="p">()]</span>
+
+    <span class="k">print</span> <span class="s">&quot;CAS objects left:&quot;</span><span class="p">,</span> <span class="n">cas_objs</span>
+    <span class="k">print</span> <span class="s">&quot;Index objects left:&quot;</span><span class="p">,</span> <span class="n">index_objs</span>
+
+    <span class="n">eq</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">cas_objs</span><span class="p">),</span> <span class="mi">0</span><span class="p">)</span>
+    <span class="n">eq</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">index_objs</span><span class="p">),</span> <span class="mi">0</span><span class="p">)</span></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-10'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-10'>#</a>
+      </div>
+      <p>Test: <code>get(put(x)) == x</code> with random buffer content</p>
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre><span class="k">def</span> <span class="nf">test_cas_put_get</span><span class="p">():</span></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-11'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-11'>#</a>
+      </div>
+      
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre>    <span class="n">cas</span> <span class="o">=</span> <span class="n">CAS</span><span class="p">(</span><span class="n">ioctx_cas</span><span class="p">)</span>
+
+    <span class="n">data_in</span> <span class="o">=</span> <span class="n">random_bytes</span><span class="p">(</span><span class="mi">99</span><span class="p">)</span>
+
+    <span class="n">obj_name</span> <span class="o">=</span> <span class="n">cas</span><span class="o">.</span><span class="n">put</span><span class="p">(</span><span class="n">data_in</span><span class="p">)</span>
+    <span class="n">eq_buffer</span><span class="p">(</span><span class="n">data_in</span><span class="p">,</span> <span class="n">cas</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">obj_name</span><span class="p">))</span></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-12'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-12'>#</a>
+      </div>
+      <p>Test: <code>get(put(x)) == x</code> with deduplicatable content (zeros)</p>
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre><span class="k">def</span> <span class="nf">test_cas_put_deduplicatable_content</span><span class="p">():</span></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-13'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-13'>#</a>
+      </div>
+      
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre>    <span class="n">cas</span> <span class="o">=</span> <span class="n">CAS</span><span class="p">(</span><span class="n">ioctx_cas</span><span class="p">)</span>
+
+    <span class="n">data_in</span> <span class="o">=</span> <span class="s">&quot;</span><span class="se">\x00</span><span class="s">&quot;</span> <span class="o">*</span> <span class="p">(</span><span class="mi">4</span> <span class="o">*</span> <span class="mi">1024</span><span class="o">**</span><span class="mi">2</span><span class="p">)</span>
+
+    <span class="n">obj_name_1</span> <span class="o">=</span> <span class="n">cas</span><span class="o">.</span><span class="n">put</span><span class="p">(</span><span class="n">data_in</span><span class="p">)</span>
+    <span class="n">obj_name_2</span> <span class="o">=</span> <span class="n">cas</span><span class="o">.</span><span class="n">put</span><span class="p">(</span><span class="n">data_in</span><span class="p">)</span>
+
+    <span class="n">eq</span><span class="p">(</span><span class="n">obj_name_1</span><span class="p">,</span> <span class="n">obj_name_2</span><span class="p">)</span></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-14'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-14'>#</a>
+      </div>
+      <p>Test Utility: <code>get(put(x)) == x</code> for given <code>cas</code> and x in <code>{random, 1s, 0s}</code></p>
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre><span class="k">def</span> <span class="nf">compressed_cas_put_get</span><span class="p">(</span><span class="n">cas</span><span class="p">):</span></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-15'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-15'>#</a>
+      </div>
+      
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre>    <span class="n">data_in</span> <span class="o">=</span> <span class="n">random_bytes</span><span class="p">(</span><span class="mi">8</span><span class="o">*</span><span class="mi">1024</span><span class="o">**</span><span class="mi">2</span><span class="p">)</span>
+    <span class="n">obj_name</span> <span class="o">=</span> <span class="n">cas</span><span class="o">.</span><span class="n">put</span><span class="p">(</span><span class="n">data_in</span><span class="p">)</span>
+    <span class="n">eq_buffer</span><span class="p">(</span><span class="n">data_in</span><span class="p">,</span> <span class="n">cas</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">obj_name</span><span class="p">,</span> <span class="n">size</span><span class="o">=</span><span class="mi">8</span><span class="o">*</span><span class="mi">1024</span><span class="o">**</span><span class="mi">2</span><span class="p">))</span>
+    <span class="n">cas</span><span class="o">.</span><span class="n">down</span><span class="p">(</span><span class="n">obj_name</span><span class="p">)</span>
+
+    <span class="n">data_in</span> <span class="o">=</span> <span class="s">&quot;</span><span class="se">\xFF</span><span class="s">&quot;</span> <span class="o">*</span> <span class="mi">11</span><span class="o">*</span><span class="mi">1024</span><span class="o">**</span><span class="mi">2</span>
+    <span class="n">obj_name</span> <span class="o">=</span> <span class="n">cas</span><span class="o">.</span><span class="n">put</span><span class="p">(</span><span class="n">data_in</span><span class="p">)</span>
+    <span class="n">eq_buffer</span><span class="p">(</span><span class="n">data_in</span><span class="p">,</span> <span class="n">cas</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">obj_name</span><span class="p">,</span> <span class="n">size</span><span class="o">=</span><span class="mi">11</span><span class="o">*</span><span class="mi">1024</span><span class="o">**</span><span class="mi">2</span><span class="p">))</span>
+    <span class="n">cas</span><span class="o">.</span><span class="n">down</span><span class="p">(</span><span class="n">obj_name</span><span class="p">)</span>
+
+    <span class="n">data_in</span> <span class="o">=</span> <span class="s">&quot;</span><span class="se">\x00</span><span class="s">&quot;</span> <span class="o">*</span> <span class="mi">42</span>
+    <span class="n">obj_name</span> <span class="o">=</span> <span class="n">cas</span><span class="o">.</span><span class="n">put</span><span class="p">(</span><span class="n">data_in</span><span class="p">)</span>
+    <span class="n">eq_buffer</span><span class="p">(</span><span class="n">data_in</span><span class="p">,</span> <span class="n">cas</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">obj_name</span><span class="p">))</span>
+    <span class="n">cas</span><span class="o">.</span><span class="n">down</span><span class="p">(</span><span class="n">obj_name</span><span class="p">)</span></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-16'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-16'>#</a>
+      </div>
+      <p>Test: <code>get(put(x)) == x</code> for all available compressors</p>
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre><span class="k">def</span> <span class="nf">test_compressed_cas_put_get</span><span class="p">():</span></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-17'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-17'>#</a>
+      </div>
+      
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre>    <span class="k">for</span> <span class="n">compression</span> <span class="ow">in</span> <span class="n">Compressor</span><span class="o">.</span><span class="n">supported</span><span class="p">():</span>
+        <span class="k">print</span> <span class="n">compression</span>
+        <span class="n">cas</span> <span class="o">=</span> <span class="n">CAS</span><span class="p">(</span><span class="n">ioctx_cas</span><span class="p">,</span> <span class="n">compression</span><span class="o">=</span><span class="n">compression</span><span class="p">)</span>
+        <span class="n">compressed_cas_put_get</span><span class="p">(</span><span class="n">cas</span><span class="p">)</span></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-18'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-18'>#</a>
+      </div>
+      <p>Test: Uncompressed put and compressed put afterwards does not change object
+except reference counter</p>
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre><span class="k">def</span> <span class="nf">test_mixed_compression</span><span class="p">():</span></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-19'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-19'>#</a>
+      </div>
+      
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-20'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-20'>#</a>
+      </div>
+      <p>Put uncompressed data and then put new objects with compression turned on
+CAS must not create new objects, but rather increment their reference counter</p>
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre>    <span class="n">cas</span> <span class="o">=</span> <span class="n">CAS</span><span class="p">(</span><span class="n">ioctx_cas</span><span class="p">,</span> <span class="n">compression</span><span class="o">=</span><span class="s">&quot;no&quot;</span><span class="p">)</span>
+    <span class="n">data_in</span> <span class="o">=</span> <span class="s">&quot;</span><span class="se">\xFF</span><span class="s">&quot;</span> <span class="o">*</span> <span class="mi">11</span><span class="o">*</span><span class="mi">1024</span><span class="o">**</span><span class="mi">2</span>
+    <span class="n">obj_name</span> <span class="o">=</span> <span class="n">cas</span><span class="o">.</span><span class="n">put</span><span class="p">(</span><span class="n">data_in</span><span class="p">)</span>
+    <span class="n">eq_buffer</span><span class="p">(</span><span class="n">data_in</span><span class="p">,</span> <span class="n">cas</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">obj_name</span><span class="p">,</span> <span class="n">size</span><span class="o">=</span><span class="mi">11</span><span class="o">*</span><span class="mi">1024</span><span class="o">**</span><span class="mi">2</span><span class="p">))</span>
+
+    <span class="k">for</span> <span class="n">compression</span> <span class="ow">in</span> <span class="n">Compressor</span><span class="o">.</span><span class="n">supported</span><span class="p">():</span>
+        <span class="n">ccas</span> <span class="o">=</span> <span class="n">CAS</span><span class="p">(</span><span class="n">ioctx_cas</span><span class="p">,</span> <span class="n">compression</span><span class="o">=</span><span class="n">compression</span><span class="p">)</span>
+        <span class="n">tmp_obj_name</span> <span class="o">=</span> <span class="n">ccas</span><span class="o">.</span><span class="n">put</span><span class="p">(</span><span class="n">data_in</span><span class="p">)</span>
+        <span class="n">eq_buffer</span><span class="p">(</span><span class="n">data_in</span><span class="p">,</span> <span class="n">ccas</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">tmp_obj_name</span><span class="p">,</span> <span class="n">size</span><span class="o">=</span><span class="mi">11</span><span class="o">*</span><span class="mi">1024</span><span class="o">**</span><span class="mi">2</span><span class="p">))</span>
+
+    <span class="n">eq_buffer</span><span class="p">(</span><span class="n">data_in</span><span class="p">,</span> <span class="n">cas</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="n">obj_name</span><span class="p">,</span> <span class="n">size</span><span class="o">=</span><span class="mi">11</span><span class="o">*</span><span class="mi">1024</span><span class="o">**</span><span class="mi">2</span><span class="p">))</span>
+
+    <span class="n">info</span> <span class="o">=</span> <span class="n">cas</span><span class="o">.</span><span class="n">info</span><span class="p">(</span><span class="n">obj_name</span><span class="p">)</span>
+    <span class="n">eq</span><span class="p">(</span><span class="s">&quot;no&quot;</span><span class="p">,</span> <span class="n">info</span><span class="p">[</span><span class="s">&quot;cas.meta.compression&quot;</span><span class="p">])</span>
+    <span class="n">eq</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">Compressor</span><span class="o">.</span><span class="n">supported</span><span class="p">())</span> <span class="o">+</span> <span class="mi">1</span><span class="p">,</span> <span class="n">info</span><span class="p">[</span><span class="s">&quot;cas.refcount&quot;</span><span class="p">])</span></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-21'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-21'>#</a>
+      </div>
+      <h2><span id="chunker-class" href="chunker-class"> Chunker Class </span></h2>
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-22'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-22'>#</a>
+      </div>
+      <p>Test: read(write(x)) = x for x filling only a single chunk</p>
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre><span class="k">def</span> <span class="nf">test_chunker_put_get_single</span><span class="p">():</span></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-23'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-23'>#</a>
+      </div>
+      
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre>    <span class="n">cas</span> <span class="o">=</span> <span class="n">CAS</span><span class="p">(</span><span class="n">ioctx_cas</span><span class="p">)</span>
+    <span class="n">chunker</span> <span class="o">=</span> <span class="n">Chunker</span><span class="p">(</span><span class="n">cas</span><span class="p">,</span> <span class="n">ioctx_index</span><span class="p">)</span>
+
+    <span class="n">data_in</span> <span class="o">=</span> <span class="n">StringIO</span><span class="p">(</span><span class="n">random_bytes</span><span class="p">(</span><span class="mi">42</span><span class="p">))</span>
+    <span class="n">obj_name</span> <span class="o">=</span> <span class="n">random_id</span><span class="p">()</span>
+
+    <span class="n">version</span> <span class="o">=</span> <span class="n">chunker</span><span class="o">.</span><span class="n">write_full</span><span class="p">(</span><span class="n">obj_name</span><span class="p">,</span> <span class="n">data_in</span><span class="p">)</span>
+
+    <span class="n">data_out</span> <span class="o">=</span> <span class="n">StringIO</span><span class="p">()</span>
+    <span class="n">chunker</span><span class="o">.</span><span class="n">read_full</span><span class="p">(</span><span class="n">obj_name</span><span class="p">,</span> <span class="n">data_out</span><span class="p">,</span> <span class="n">version</span><span class="p">)</span>
+
+    <span class="n">eq_buffer</span><span class="p">(</span><span class="n">data_in</span><span class="o">.</span><span class="n">getvalue</span><span class="p">(),</span> <span class="n">data_out</span><span class="o">.</span><span class="n">getvalue</span><span class="p">())</span></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-24'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-24'>#</a>
+      </div>
+      <p>Test: read(write(x)) = x for x spread over multiple chunks. Every chunk filled</p>
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre><span class="k">def</span> <span class="nf">test_chunker_put_get_multiple</span><span class="p">():</span></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-25'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-25'>#</a>
+      </div>
+      
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre>    <span class="n">cas</span> <span class="o">=</span> <span class="n">CAS</span><span class="p">(</span><span class="n">ioctx_cas</span><span class="p">)</span>
+    <span class="n">chunker</span> <span class="o">=</span> <span class="n">Chunker</span><span class="p">(</span><span class="n">cas</span><span class="p">,</span> <span class="n">ioctx_index</span><span class="p">)</span>
+
+    <span class="n">data_in</span> <span class="o">=</span> <span class="n">StringIO</span><span class="p">(</span><span class="n">random_bytes</span><span class="p">(</span><span class="n">chunker</span><span class="o">.</span><span class="n">chunk_size</span><span class="o">*</span><span class="mi">4</span><span class="p">))</span>
+    <span class="n">obj_name</span> <span class="o">=</span> <span class="n">random_id</span><span class="p">()</span>
+
+    <span class="n">version</span> <span class="o">=</span> <span class="n">chunker</span><span class="o">.</span><span class="n">write_full</span><span class="p">(</span><span class="n">obj_name</span><span class="p">,</span> <span class="n">data_in</span><span class="p">)</span>
+
+    <span class="n">data_out</span> <span class="o">=</span> <span class="n">StringIO</span><span class="p">()</span>
+    <span class="n">chunker</span><span class="o">.</span><span class="n">read_full</span><span class="p">(</span><span class="n">obj_name</span><span class="p">,</span> <span class="n">data_out</span><span class="p">,</span> <span class="n">version</span><span class="p">)</span>
+
+    <span class="n">eq_buffer</span><span class="p">(</span><span class="n">data_in</span><span class="o">.</span><span class="n">getvalue</span><span class="p">(),</span> <span class="n">data_out</span><span class="o">.</span><span class="n">getvalue</span><span class="p">())</span></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-26'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-26'>#</a>
+      </div>
+      <p>Test: read(write(x)) = x for x spread over multiple chunks. With partially filled chunks</p>
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre><span class="k">def</span> <span class="nf">test_chunker_put_get_multiple_fraction</span><span class="p">():</span></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-27'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-27'>#</a>
+      </div>
+      
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre>    <span class="n">cas</span> <span class="o">=</span> <span class="n">CAS</span><span class="p">(</span><span class="n">ioctx_cas</span><span class="p">)</span>
+    <span class="n">chunker</span> <span class="o">=</span> <span class="n">Chunker</span><span class="p">(</span><span class="n">cas</span><span class="p">,</span> <span class="n">ioctx_index</span><span class="p">)</span>
+
+    <span class="n">data_in</span> <span class="o">=</span> <span class="n">StringIO</span><span class="p">(</span><span class="n">random_bytes</span><span class="p">(</span><span class="nb">int</span><span class="p">(</span><span class="n">chunker</span><span class="o">.</span><span class="n">chunk_size</span><span class="o">*</span><span class="mf">1.5</span><span class="p">)))</span>
+    <span class="n">obj_name</span> <span class="o">=</span> <span class="n">random_id</span><span class="p">()</span>
+
+    <span class="n">version</span> <span class="o">=</span> <span class="n">chunker</span><span class="o">.</span><span class="n">write_full</span><span class="p">(</span><span class="n">obj_name</span><span class="p">,</span> <span class="n">data_in</span><span class="p">)</span>
+
+    <span class="n">data_out</span> <span class="o">=</span> <span class="n">StringIO</span><span class="p">()</span>
+    <span class="n">chunker</span><span class="o">.</span><span class="n">read_full</span><span class="p">(</span><span class="n">obj_name</span><span class="p">,</span> <span class="n">data_out</span><span class="p">,</span> <span class="n">version</span><span class="p">)</span>
+
+    <span class="n">eq_buffer</span><span class="p">(</span><span class="n">data_in</span><span class="o">.</span><span class="n">getvalue</span><span class="p">(),</span> <span class="n">data_out</span><span class="o">.</span><span class="n">getvalue</span><span class="p">())</span></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-28'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-28'>#</a>
+      </div>
+      <p>Test: versions / head_version returns version of last write_full. Single write_full</p>
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre><span class="k">def</span> <span class="nf">test_chunker_versions</span><span class="p">():</span></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-29'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-29'>#</a>
+      </div>
+      
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre>    <span class="n">cas</span> <span class="o">=</span> <span class="n">CAS</span><span class="p">(</span><span class="n">ioctx_cas</span><span class="p">)</span>
+    <span class="n">chunker</span> <span class="o">=</span> <span class="n">Chunker</span><span class="p">(</span><span class="n">cas</span><span class="p">,</span> <span class="n">ioctx_index</span><span class="p">)</span>
+
+    <span class="n">data_in</span> <span class="o">=</span> <span class="n">StringIO</span><span class="p">(</span><span class="n">random_bytes</span><span class="p">(</span><span class="mi">10</span><span class="o">*</span><span class="mi">1024</span><span class="o">**</span><span class="mi">1</span><span class="p">))</span>
+    <span class="n">obj_name</span> <span class="o">=</span> <span class="n">random_id</span><span class="p">()</span>
+
+    <span class="n">version</span> <span class="o">=</span> <span class="n">chunker</span><span class="o">.</span><span class="n">write_full</span><span class="p">(</span><span class="n">obj_name</span><span class="p">,</span> <span class="n">data_in</span><span class="p">)</span>
+
+    <span class="n">eq</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">chunker</span><span class="o">.</span><span class="n">versions</span><span class="p">(</span><span class="n">obj_name</span><span class="p">)),</span> <span class="mi">1</span><span class="p">)</span>
+
+    <span class="n">eq</span><span class="p">(</span><span class="n">version</span><span class="p">,</span> <span class="n">chunker</span><span class="o">.</span><span class="n">head_version</span><span class="p">(</span><span class="n">obj_name</span><span class="p">))</span>
+    <span class="n">eq</span><span class="p">(</span><span class="n">version</span><span class="p">,</span> <span class="n">chunker</span><span class="o">.</span><span class="n">versions</span><span class="p">(</span><span class="n">obj_name</span><span class="p">)[</span><span class="mi">0</span><span class="p">])</span></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-30'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-30'>#</a>
+      </div>
+      <p>Test: versions / head_version return version of last write_full. Multiple write_full</p>
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre><span class="k">def</span> <span class="nf">test_chunker_multiple_versions</span><span class="p">():</span></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-31'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-31'>#</a>
+      </div>
+      
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre>    <span class="n">cas</span> <span class="o">=</span> <span class="n">CAS</span><span class="p">(</span><span class="n">ioctx_cas</span><span class="p">)</span>
+    <span class="n">chunker</span> <span class="o">=</span> <span class="n">Chunker</span><span class="p">(</span><span class="n">cas</span><span class="p">,</span> <span class="n">ioctx_index</span><span class="p">)</span>
+
+    <span class="n">data_in</span> <span class="o">=</span> <span class="n">random_bytes</span><span class="p">(</span><span class="mi">42</span><span class="p">)</span>
+    <span class="n">obj_name</span> <span class="o">=</span> <span class="n">random_id</span><span class="p">()</span>
+
+    <span class="n">versions</span> <span class="o">=</span> <span class="p">(</span>
+        <span class="n">chunker</span><span class="o">.</span><span class="n">write_full</span><span class="p">(</span><span class="n">obj_name</span><span class="p">,</span> <span class="n">StringIO</span><span class="p">(</span><span class="n">data_in</span><span class="p">)),</span>
+        <span class="n">chunker</span><span class="o">.</span><span class="n">write_full</span><span class="p">(</span><span class="n">obj_name</span><span class="p">,</span> <span class="n">StringIO</span><span class="p">(</span><span class="n">data_in</span><span class="p">)),</span>
+        <span class="n">chunker</span><span class="o">.</span><span class="n">write_full</span><span class="p">(</span><span class="n">obj_name</span><span class="p">,</span> <span class="n">StringIO</span><span class="p">(</span><span class="n">data_in</span><span class="p">)),</span>
+        <span class="n">chunker</span><span class="o">.</span><span class="n">write_full</span><span class="p">(</span><span class="n">obj_name</span><span class="p">,</span> <span class="n">StringIO</span><span class="p">(</span><span class="n">data_in</span><span class="p">)),</span>
+        <span class="n">chunker</span><span class="o">.</span><span class="n">write_full</span><span class="p">(</span><span class="n">obj_name</span><span class="p">,</span> <span class="n">StringIO</span><span class="p">(</span><span class="n">data_in</span><span class="p">)),</span>
+    <span class="p">)</span>
+
+    <span class="n">eq</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">versions</span><span class="p">),</span> <span class="nb">len</span><span class="p">(</span><span class="n">chunker</span><span class="o">.</span><span class="n">versions</span><span class="p">(</span><span class="n">obj_name</span><span class="p">)))</span>
+
+    <span class="n">eq</span><span class="p">(</span><span class="n">versions</span><span class="p">[</span><span class="o">-</span><span class="mi">1</span><span class="p">],</span> <span class="n">chunker</span><span class="o">.</span><span class="n">head_version</span><span class="p">(</span><span class="n">obj_name</span><span class="p">))</span>
+    <span class="n">eq</span><span class="p">(</span><span class="n">versions</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">chunker</span><span class="o">.</span><span class="n">versions</span><span class="p">(</span><span class="n">obj_name</span><span class="p">)[</span><span class="mi">0</span><span class="p">])</span></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-32'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-32'>#</a>
+      </div>
+      <p>Test: remove actually removes</p>
+<ul>
+<li><code>remove_version(write_full)</code>: No versions, but index object</li>
+<li><code>write_full, write_full, remove_all_versions</code>: Index object gone</li>
+</ul>
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre><span class="k">def</span> <span class="nf">test_chunker_remove</span><span class="p">():</span></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-33'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-33'>#</a>
+      </div>
+      
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre>    <span class="n">cas</span> <span class="o">=</span> <span class="n">CAS</span><span class="p">(</span><span class="n">ioctx_cas</span><span class="p">)</span>
+    <span class="n">chunker</span> <span class="o">=</span> <span class="n">Chunker</span><span class="p">(</span><span class="n">cas</span><span class="p">,</span> <span class="n">ioctx_index</span><span class="p">)</span>
+
+    <span class="n">data_in</span> <span class="o">=</span> <span class="n">random_bytes</span><span class="p">(</span><span class="mi">42</span><span class="p">)</span>
+    <span class="n">obj_name</span> <span class="o">=</span> <span class="n">random_id</span><span class="p">()</span>
+
+    <span class="n">version</span> <span class="o">=</span> <span class="n">chunker</span><span class="o">.</span><span class="n">write_full</span><span class="p">(</span><span class="n">obj_name</span><span class="p">,</span> <span class="n">StringIO</span><span class="p">(</span><span class="n">data_in</span><span class="p">))</span>
+    <span class="n">chunker</span><span class="o">.</span><span class="n">remove_version</span><span class="p">(</span><span class="n">obj_name</span><span class="p">,</span> <span class="n">version</span><span class="p">)</span>
+
+    <span class="n">eq</span><span class="p">(</span><span class="n">chunker</span><span class="o">.</span><span class="n">head_version</span><span class="p">(</span><span class="n">obj_name</span><span class="p">),</span> <span class="bp">None</span><span class="p">)</span>
+
+    <span class="n">chunker</span><span class="o">.</span><span class="n">write_full</span><span class="p">(</span><span class="n">obj_name</span><span class="p">,</span> <span class="n">StringIO</span><span class="p">(</span><span class="n">data_in</span><span class="p">))</span>
+    <span class="n">chunker</span><span class="o">.</span><span class="n">write_full</span><span class="p">(</span><span class="n">obj_name</span><span class="p">,</span> <span class="n">StringIO</span><span class="p">(</span><span class="n">data_in</span><span class="p">))</span>
+    <span class="n">chunker</span><span class="o">.</span><span class="n">remove_all_versions</span><span class="p">(</span><span class="n">obj_name</span><span class="p">)</span>
+
+    <span class="n">assert_raises</span><span class="p">(</span><span class="n">ObjectNotFound</span><span class="p">,</span> <span class="n">chunker</span><span class="o">.</span><span class="n">head_version</span><span class="p">,</span> <span class="n">obj_name</span><span class="p">)</span></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-34'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-34'>#</a>
+      </div>
+      <p>Test: partial reads using chunker.read with different input and weird extents</p>
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre><span class="k">def</span> <span class="nf">test_chunker_partial_read</span><span class="p">():</span></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-35'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-35'>#</a>
+      </div>
+      
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre>    <span class="n">cas</span> <span class="o">=</span> <span class="n">CAS</span><span class="p">(</span><span class="n">ioctx_cas</span><span class="p">)</span>
+    <span class="n">chunker</span> <span class="o">=</span> <span class="n">Chunker</span><span class="p">(</span><span class="n">cas</span><span class="p">,</span> <span class="n">ioctx_index</span><span class="p">)</span>
+
+    <span class="n">data_in</span> <span class="o">=</span> <span class="n">StringIO</span><span class="p">(</span><span class="s">&quot;</span><span class="se">\x00</span><span class="s">&quot;</span> <span class="o">*</span> <span class="n">chunker</span><span class="o">.</span><span class="n">chunk_size</span> <span class="o">+</span>
+                       <span class="s">&quot;</span><span class="se">\xFF</span><span class="s">&quot;</span> <span class="o">*</span> <span class="n">chunker</span><span class="o">.</span><span class="n">chunk_size</span><span class="p">)</span>
+    <span class="n">obj_name</span> <span class="o">=</span> <span class="n">random_id</span><span class="p">()</span>
+
+    <span class="n">version</span> <span class="o">=</span> <span class="n">chunker</span><span class="o">.</span><span class="n">write_full</span><span class="p">(</span><span class="n">obj_name</span><span class="p">,</span> <span class="n">data_in</span><span class="p">)</span>
+
+    <span class="n">middle</span> <span class="o">=</span> <span class="n">chunker</span><span class="o">.</span><span class="n">chunk_size</span> <span class="o">/</span> <span class="mi">2</span>
+
+    <span class="n">buf</span> <span class="o">=</span> <span class="n">chunker</span><span class="o">.</span><span class="n">read</span><span class="p">(</span><span class="n">obj_name</span><span class="p">,</span> <span class="n">chunker</span><span class="o">.</span><span class="n">chunk_size</span><span class="p">,</span> <span class="n">middle</span><span class="p">,</span> <span class="n">version</span><span class="p">)</span>
+
+    <span class="n">eq</span><span class="p">(</span><span class="nb">len</span><span class="p">(</span><span class="n">buf</span><span class="p">),</span> <span class="n">chunker</span><span class="o">.</span><span class="n">chunk_size</span><span class="p">)</span>
+    <span class="n">eq_buffer</span><span class="p">(</span><span class="s">&quot;</span><span class="se">\x00</span><span class="s">&quot;</span> <span class="o">*</span> <span class="p">(</span><span class="n">chunker</span><span class="o">.</span><span class="n">chunk_size</span><span class="o">/</span><span class="mi">2</span><span class="p">)</span> <span class="o">+</span>
+              <span class="s">&quot;</span><span class="se">\xFF</span><span class="s">&quot;</span> <span class="o">*</span> <span class="p">(</span><span class="n">chunker</span><span class="o">.</span><span class="n">chunk_size</span><span class="o">/</span><span class="mi">2</span><span class="p">),</span> <span class="n">buf</span><span class="p">)</span></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-36'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-36'>#</a>
+      </div>
+      <p>Test: partial reads past <em>file</em> size</p>
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre><span class="k">def</span> <span class="nf">test_chunker_partial_read_past_size</span><span class="p">():</span></pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+  <div class='section' id='section-37'>
+    <div class='docs'>
+      <div class='octowrap'>
+        <a class='octothorpe' href='#section-37'>#</a>
+      </div>
+      
+    </div>
+    <div class='code'>
+      <div class="highlight"><pre>    <span class="n">cas</span> <span class="o">=</span> <span class="n">CAS</span><span class="p">(</span><span class="n">ioctx_cas</span><span class="p">)</span>
+    <span class="n">chunker</span> <span class="o">=</span> <span class="n">Chunker</span><span class="p">(</span><span class="n">cas</span><span class="p">,</span> <span class="n">ioctx_index</span><span class="p">)</span>
+
+    <span class="n">data_in</span> <span class="o">=</span> <span class="n">StringIO</span><span class="p">(</span><span class="s">&quot;</span><span class="se">\x00</span><span class="s">&quot;</span> <span class="o">*</span> <span class="n">chunker</span><span class="o">.</span><span class="n">chunk_size</span><span class="p">)</span>
+    <span class="n">obj_name</span> <span class="o">=</span> <span class="n">random_id</span><span class="p">()</span>
+
+    <span class="n">version</span> <span class="o">=</span> <span class="n">chunker</span><span class="o">.</span><span class="n">write_full</span><span class="p">(</span><span class="n">obj_name</span><span class="p">,</span> <span class="n">data_in</span><span class="p">)</span>
+
+    <span class="n">buf</span> <span class="o">=</span> <span class="n">chunker</span><span class="o">.</span><span class="n">read</span><span class="p">(</span><span class="n">obj_name</span><span class="p">,</span> <span class="n">chunker</span><span class="o">.</span><span class="n">chunk_size</span><span class="p">,</span> <span class="n">chunker</span><span class="o">.</span><span class="n">chunk_size</span><span class="p">,</span> <span class="n">version</span><span class="p">)</span>
+
+    <span class="n">eq_buffer</span><span class="p">(</span><span class="n">buf</span><span class="p">,</span> <span class="s">&quot;&quot;</span><span class="p">)</span>
+
+</pre></div>
+    </div>
+  </div>
+  <div class='clearall'></div>
+</div>
+</body>
