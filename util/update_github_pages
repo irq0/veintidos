@@ -1,0 +1,23 @@
+#!/bin/bash
+
+set -e
+set -x
+
+readonly TMP="$(mktemp -d)"
+
+(
+    cd "$(dirname "$0")/../"
+    pycco -d "$TMP" -i -p veintidos/*.py test/*.py *.py
+
+    current_rev="$(git rev-parse HEAD)"
+
+    git checkout gh-pages
+    rsync -av "${TMP}/" .
+
+    git add .
+    git commit -m "Documentation for $current_rev"
+
+    git checkout master
+
+    echo "You should push master and gh-pages now"
+)
