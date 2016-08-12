@@ -135,7 +135,10 @@ Since Veintidos is a prototype the implementation has some limitations:
 - Recipes are implemented client side and not in an object class
   - Possibly move =get_extents_in_range= to OSD to speed up operations
     such as partial read/write
-
+- Client crashes result in orphaned objects
+  - If a client crashes before writing the recipe and index objects
+    the data objects in the CAS pool end up being unreferenced
+  - Fix: Add intent logging to client
 * Usage
 The code contains both a library and a command line utility to write
 files to a CAS pool.
